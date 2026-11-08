@@ -1,73 +1,121 @@
-# cascade-vision
+# cascade-vision — Cascaded Video Understanding / 级联视频语义分析
 
-Cascaded motion detection, object tracking, and asynchronous vision-language inspection for video streams.
+**Select video regions for VLM analysis with motion filtering and object tracking, then export structured events and compare sampling policies.**
+
+**先在本地筛选画面、检测并跟踪目标，再按需交给视觉语言模型分析，导出结构化事件，并对比不同采样策略的效果与开销。**
 
 [![CI](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Status: early alpha.** An experimental Python library and CLI for selecting video regions to send to a VLM. Real-world event recall, accuracy, and cost savings have not yet been established. [中文说明](README.zh-CN.md)
+[中文介绍](README.zh-CN.md) · [完整中文指南](docs/GUIDE.zh-CN.md) · [Latest release / 版本下载](https://github.com/x549d/cascade-vision/releases) · [Event schema / 事件接口](docs/EVENTS.md)
+
+**Status / 状态：early alpha。** The library and CLI are runnable; real-video accuracy, cost savings and independent adoption remain to be validated. 已提供可运行的工具与离线测试，真实场景效果和成本节省仍待验证。
+
+## Purpose / 项目作用
+
+`cascade-vision` is a Python library and command-line tool for experimenting with selective video understanding. Use it to build a video-analysis prototype, decide when a frame or object crop needs semantic inspection, integrate per-request events, or compare the trade-offs between API usage, event recall and latency.
+
+本项目面向视频分析原型开发与策略评测：帮助开发者决定哪些画面或目标区域需要进一步分析，接入逐条语义结果，并观察筛选策略对调用量、事件召回率和延迟的影响。
+
+| Capability / 能力 | What it does / 作用 |
+| --- | --- |
+| Motion filtering / 运动筛选 | OpenCV MOG2 selects changing scenes, with periodic static-scene detection / 筛选有变化的画面，并支持静态画面定期检测 |
+| Detection and tracking / 检测与跟踪 | YOLO + ByteTrack identifies objects and routes priority, uncertain or overlapping targets / 检测并跟踪目标，触发重点、疑难或重叠目标审查 |
+| Selective VLM inspection / 按需语义分析 | Crops object regions for asynchronous structured inspection / 对目标区域异步分析，返回类别、活动和事件标签 |
+| Failure recovery / 失败恢复 | Bounded retries, result refresh, queue expiry and RTSP reconnects / 有限重试、结果刷新、任务过期及 RTSP 重连 |
+| Integration / 系统接入 | JSON summaries and JSONL task events with usage and timing / 导出汇总报告、逐条事件、用量和耗时 |
+| Policy evaluation / 策略评测 | Compare fixed-interval, motion, cascade and full-frame policies on annotated clips / 在带标注片段上比较抽帧与级联策略 |
 
 ```text
-Webcam / RTSP / video
-        |
-OpenCV MOG2 motion gate
-        |
-YOLO + ByteTrack -> priority / low-confidence / overlap triggers
-        |
-Padded JPEG region -> bounded queue -> VLM workers
-                                        |
-                          structured verdict + measured API usage
+Video / 摄像头 / RTSP
+        -> Motion gate / 运动门控
+        -> YOLO + ByteTrack / 目标检测与跟踪
+        -> Trigger + crop / 触发与裁剪
+        -> Bounded queue + VLM workers / 异步语义分析
+        -> Structured verdicts + JSONL events / 结构化结论与事件
 ```
 
-## Install
+## Quick Start / 快速开始
 
-Python 3.9 or newer:
+Python 3.9 or newer. Run these commands from a terminal / 使用 Python 3.9 或以上版本，在终端执行：
 
 ```bash
 git clone https://github.com/x549d/cascade-vision.git
 cd cascade-vision
-python -m pip install -e ".[dev]"
+python -m pip install -e .
+python -m cascade_vision.cli demo --mock-vlm --report-json reports/demo.json --events-jsonl reports/events.jsonl
 ```
 
-For real YOLO detection, install `python -m pip install -e ".[yolo]"`. Weights may download on first use. Ultralytics and its weights have their own licensing terms; review [Ultralytics licensing](https://www.ultralytics.com/license) for your deployment.
+The demo generates its own 300-frame synthetic video stream and uses a contour detector plus simulated VLM responses. After dependency installation it needs **no local footage, camera, model download, API key or paid API request**.
 
-The default OpenCV dependency is headless. For `--show-window`, use an appropriate GUI-enabled OpenCV distribution in a separate environment. Avoid installing multiple OpenCV distributions together.
+演示会自行生成 300 帧合成画面，使用轮廓检测和模拟语义结论。依赖安装完成后，**无需本地视频、摄像头、模型权重或 API 密钥，也不会产生 API 调用费用**。
 
-## Offline demo
+| Output / 输出 | Contents / 内容 |
+| --- | --- |
+| `reports/demo.json` | Execution mode and aggregate metrics / 运行模式与汇总指标 |
+| `reports/events.jsonl` | Per-task statuses, verdicts, usage and timing / 逐条状态、结论、用量与耗时 |
+
+Mock verdicts are predefined examples; they do not establish real semantic accuracy. 模拟结论来自预设规则，不能据此判断真实识别效果。
+
+## Examples / 使用示例
+
+### 1. Offline Policy Comparison / 离线策略对比
 
 ```bash
-cascade-vision demo --mock-vlm --report-json reports/demo.json --events-jsonl reports/events.jsonl
+python examples/generate_fixture.py --output-dir reports/fixture
+python -m cascade_vision.cli benchmark --manifest reports/fixture/manifest.json --output-dir reports/comparison --mock-vlm --yolo-model mock
 ```
 
-Generates 300 synthetic frames using a fixed seed. The detector uses colored contours and the VLM returns simulated profiles. No camera, model download, API key, or paid request is needed after installing runtime dependencies. **Mock outputs do not demonstrate semantic detection accuracy.**
+Compares interval, motion and cascade policies on the same generated clip. Inspect `reports/comparison/benchmark.json` and each policy's JSONL file. Synthetic footage and simulation are explicitly flagged. To speed up a smoke run, set `CASCADE_MOCK_LATENCY_S=0`.
 
-## Real video
+对同一段合成视频运行固定间隔、运动筛选和完整级联策略，输出主报告与各策略的事件文件。报告会标明合成素材和模拟模式。快速验证时可设置 `CASCADE_MOCK_LATENCY_S=0`。
 
-Set `OPENAI_API_KEY` in your shell, then run:
+### 2. Local Video with Real YOLO and Mock VLM / 本地视频真实检测与模拟语义
 
 ```bash
-cascade-vision run --source path/to/video.mp4 --max-frames 600 --report-json reports/video.json
-cascade-vision run --source 0 --headless
+python -m pip install -e ".[yolo]"
+python -m cascade_vision.cli run --source local/video.mp4 --mock-vlm --headless --max-frames 300 --event-labels person,backpack --report-json reports/local.json --events-jsonl reports/local-events.jsonl
 ```
 
-PowerShell: `$env:OPENAI_API_KEY = "your-key"`. Bash: `export OPENAI_API_KEY="your-key"`. Keep credentials out of source control. Real mode sends cropped video regions to your configured provider and incurs API charges.
+Replace the path with an authorized clip. YOLO weights may download on first use. Detection and tracking are real; VLM verdicts remain simulated and no VLM API request is sent.
 
-To simulate only the VLM on a real detector, add `--mock-vlm`. For synthetic contour detection, pass `--yolo-model mock`. YOLO load errors and empty real detections never silently switch to the contour detector. API errors and refusals never become simulated verdicts. Missing credentials fail immediately unless simulation is explicitly enabled.
+将路径替换为有权使用的视频。首次运行可能下载 YOLO 权重；此模式进行真实检测与跟踪，语义结果仍为模拟，不发送 VLM API 请求。
 
-## Library
+### 3. Real VLM Inspection / 真实 VLM 语义分析
+
+Configure `OPENAI_API_KEY` before running. This optional mode sends cropped images to your provider and can incur API charges. 设置密钥后可运行以下可选模式；它会发送裁剪图像，并可能产生 API 费用。
+
+```bash
+python -m cascade_vision.cli run --source local/video.mp4 --max-frames 300 --max-api-calls 10 --event-labels person,backpack --report-json reports/api.json --events-jsonl reports/api-events.jsonl
+```
+
+PowerShell: `$env:OPENAI_API_KEY = "your-key"`. Bash: `export OPENAI_API_KEY="your-key"`.
+
+The attempt cap includes retries and is not a dollar ceiling. Reaching it is reported explicitly. 缺少密钥时真实模式会报错；次数限制包括重试，不等同于美元预算上限，达到限制会记录在报告中。
+
+### 4. Python Integration / Python 接入
 
 ```python
-from cascade_vision import CascadeConfig, CascadePipeline
+from cascade_vision import CascadeConfig, CascadePipeline, JsonlEventWriter
+from cascade_vision.cli import generate_synthetic_stream
 
-config = CascadeConfig.from_env(mock_vlm=True, yolo_model="mock")
-pipeline = CascadePipeline(config)
-report = pipeline.run_stream("example.mp4", max_frames=300)
-print(report.to_dict())
+config = CascadeConfig.from_env(
+    mock_vlm=True,
+    yolo_model="mock",
+    event_labels=["person", "backpack"],
+)
+
+with JsonlEventWriter("reports/library-events.jsonl") as writer:
+    pipeline = CascadePipeline(config, event_callback=writer.write)
+    report = pipeline.run_stream(generate_synthetic_stream(), source_fps=30)
+    print(report.to_dict())
 ```
 
-Use a fresh pipeline per stream. Lower-level `process_frame()` users must call `stop_workers()` in a `finally` block. Shutdown drains queued and in-flight tasks within a total deadline; a timeout raises and retains active worker handles. Python cannot forcibly cancel a running provider request.
+Use a new pipeline per stream and `get_verdict(track_id)` for TTL-aware results. Lower-level `process_frame()` integrations must stop workers in a `finally` block. 每个视频流使用独立管线；读取有效结论时调用 `get_verdict()`。直接逐帧接入时，应在 `finally` 中关闭工作线程。
 
-## Configuration
+The default OpenCV package is headless. `--show-window` requires a suitable GUI environment and GUI-enabled OpenCV distribution. 默认使用无图形界面的 OpenCV；需要窗口显示时应单独配置 GUI 环境。
+
+## Configuration / 参数配置
 
 `CascadeConfig.from_env()` accepts overrides and `CASCADE_<FIELD>` environment variables, as well as `OPENAI_API_KEY` and `OPENAI_BASE_URL`. Constructor overrides take precedence.
 
@@ -102,7 +150,7 @@ Use a fresh pipeline per stream. Lower-level `process_frame()` users must call `
 
 Stability counts consecutive **detector evaluations**, allowing raw frames to be skipped by the motion gate. It resets on absence in a detector evaluation or track expiry. Dropped tasks release their cooldown for retry. Transient failures retry after bounded backoff on a fresh observed frame, bypassing the normal cooldown. Non-retryable responses (including refusals/auth errors) and exhausted retry cycles stop until the track expires or you call `tracker.clear_audit_failure(track_id)`. Pending tasks suppress duplicate requests. Successful results refresh after the frame interval or TTL, subject to the normal cooldown. Overlapping objects are inspected as individual crops; temporal interaction reasoning is not implemented.
 
-## Metrics and limits
+## Metrics and Limitations / 指标与局限
 
 - `actual_tokens` comes from response `usage` (prompt + completion). Mock calls use zero real tokens. Missing usage, transport errors, or pending work make the complete total `null`; partial observed totals remain available.
 - `estimated_cost_usd` uses your configured standard input/output rates. It is `null` when rates or complete usage are unavailable. It excludes caching discounts, special pricing and provider-side adjustments, and is not a billing receipt.
@@ -115,7 +163,7 @@ Stability counts consecutive **detector evaluations**, allowing raw frames to be
 
 Version 0.2 removes the fixed `85/765` accounting fields and savings percentages. Migrate consumers to measured usage and the separately named estimates.
 
-## Events and annotated comparisons
+## Annotated Evaluation / 带标注对比评测
 
 ```bash
 python examples/generate_fixture.py --output-dir reports/fixture
@@ -126,7 +174,7 @@ This fixture is synthetic; reports explicitly mark that fact. For real clips, co
 
 See [benchmark commands and scoring](docs/BENCHMARKS.md), [event schema/integration](docs/EVENTS.md), and [independent pilot guide](docs/PILOT_GUIDE.md). No real-video results or independent adoption are claimed yet.
 
-## Development
+## Development / 开发与测试
 
 ```bash
 python -m pytest -q
@@ -137,6 +185,6 @@ python -m build
 
 See [evaluation methodology](docs/BENCHMARKS.md), [contributing](CONTRIBUTING.md), and [changelog](CHANGELOG.md). There is no published real-video benchmark or claimed adoption count. Contributions with licensed footage, event annotations and raw measurements are welcome.
 
-## License
+## License / 许可证
 
 Project source is [MIT](LICENSE). Third-party packages, models and datasets retain their respective licenses.
