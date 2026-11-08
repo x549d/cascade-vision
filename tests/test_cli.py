@@ -46,3 +46,34 @@ def test_invalid_arguments_fail_before_processing(arguments, monkeypatch):
     with pytest.raises(SystemExit) as caught:
         main()
     assert caught.value.code == 2
+
+
+def test_capped_demo_exports_loss_report_and_exits_unsuccessfully(tmp_path, monkeypatch):
+    output, events = tmp_path / "run.json", tmp_path / "events.jsonl"
+    monkeypatch.setenv("CASCADE_MOCK_LATENCY_S", "0")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cascade-vision", "demo", "--max-api-calls", "1", "--report-json", str(output), "--events-jsonl", str(events)],
+    )
+    with pytest.raises(SystemExit) as caught:
+        main()
+    assert caught.value.code == 1
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["metrics"]["vlm_calls"] == 1
+    assert report["metrics"]["budget_rejected_tasks"] > 0
+    records = [json.loads(line) for line in events.read_text(encoding="utf-8").splitlines()]
+    assert "budget_rejected" in {record["status"] for record in records}
+
+
+def test_paid_benchmark_cli_requires_opt_in_before_opening_files(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CASCADE_MOCK_VLM", "false")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cascade-vision", "benchmark", "--manifest", "not-a-real-file.json", "--output-dir", str(tmp_path)],
+    )
+    with pytest.raises(SystemExit) as caught:
+        main()
+    assert caught.value.code == 1
+    assert "allow-api" in capsys.readouterr().err

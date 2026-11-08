@@ -54,6 +54,20 @@ class CascadeConfig:
     max_queue_size: int = 20
     worker_threads: int = 2
     max_cached_tracks: int = 1000
+    audit_max_retries: int = 2
+    retry_backoff_s: float = 1.0
+    retry_backoff_max_s: float = 30.0
+    verdict_ttl_s: float = 60.0
+    refresh_interval_frames: int = 300
+    detector_refresh_interval_frames: int = 30
+    max_task_age_s: float = 10.0
+    rtsp_reconnect_attempts: int = 3
+    rtsp_reconnect_backoff_s: float = 1.0
+    capture_timeout_ms: int = 5000
+    max_vlm_calls: int = 0
+    strategy: str = "cascade"
+    sample_interval_s: float = 1.0
+    event_labels: List[str] = field(default_factory=list)
 
     # Optional user-supplied standard rates; never assume current provider pricing.
     input_cost_per_million_tokens: Optional[float] = None
@@ -95,6 +109,28 @@ class CascadeConfig:
             value = getattr(self, name)
             if value is not None and (not math.isfinite(value) or value < 0):
                 raise ValueError(f"{name} must be finite and non-negative")
+        for name in (
+            "audit_max_retries",
+            "refresh_interval_frames",
+            "detector_refresh_interval_frames",
+            "rtsp_reconnect_attempts",
+            "max_vlm_calls",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        for name in ("retry_backoff_s", "retry_backoff_max_s", "rtsp_reconnect_backoff_s"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        for name in ("verdict_ttl_s", "max_task_age_s", "sample_interval_s", "capture_timeout_ms"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if self.strategy not in {"cascade", "interval", "motion", "full"}:
+            raise ValueError("strategy must be cascade, interval, motion, or full")
+        if len(set(self.event_labels)) != len(self.event_labels) or any(
+            not label.strip() for label in self.event_labels
+        ):
+            raise ValueError("event_labels must be unique non-empty strings")
 
     @classmethod
     def from_env(
@@ -148,6 +184,12 @@ def _coerce_env_value(field_name: str, raw: str) -> Any:
         "worker_threads",
         "max_track_age_frames",
         "max_cached_tracks",
+        "audit_max_retries",
+        "refresh_interval_frames",
+        "detector_refresh_interval_frames",
+        "rtsp_reconnect_attempts",
+        "capture_timeout_ms",
+        "max_vlm_calls",
     }
     float_fields = {
         "motion_ratio_threshold",
@@ -160,8 +202,14 @@ def _coerce_env_value(field_name: str, raw: str) -> Any:
         "input_cost_per_million_tokens",
         "output_cost_per_million_tokens",
         "api_timeout_s",
+        "retry_backoff_s",
+        "retry_backoff_max_s",
+        "verdict_ttl_s",
+        "max_task_age_s",
+        "rtsp_reconnect_backoff_s",
+        "sample_interval_s",
     }
-    list_fields = {"priority_classes"}
+    list_fields = {"priority_classes", "event_labels"}
 
     if field_name in bool_fields:
         if text.lower() not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:

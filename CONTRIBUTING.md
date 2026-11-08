@@ -5,8 +5,8 @@ Issues and pull requests are welcome. For substantial changes, open an issue des
 ```bash
 python -m pip install -e ".[dev]"
 python -m pytest -q
-python -m ruff check cascade_vision tests
-python -m ruff format --check cascade_vision tests
+python -m ruff check cascade_vision tests examples
+python -m ruff format --check cascade_vision tests examples
 python -m build
 ```
 
@@ -16,10 +16,10 @@ Bug reports should include Python/package versions, a minimal reproduction and s
 
 ## Roadmap
 
-- Licensed real-video fixtures and event annotations.
-- Fixed-interval and motion-only comparison runners.
-- Event precision/recall and end-to-end latency evaluation.
-- Track refresh policies and temporal context for stationary objects.
+- Collect authorized real-video annotations and publish independently reproducible measurements.
+- Recruit independent pilots using docs/PILOT_GUIDE.md and the pilot feedback issue template.
+- Validate comparison quality on real workloads and iterate on negative results.
+- Add multi-frame temporal context for interactions and stationary objects.
 - Opt-in provider integration tests with budget limits.
 
 Contributions use the project's MIT license. Identify third-party code, weights or data and preserve their license requirements.

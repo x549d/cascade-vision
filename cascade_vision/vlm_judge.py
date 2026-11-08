@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,10 +30,11 @@ class AuditResult:
 class VLMAuditError(RuntimeError):
     """A failed inspection, optionally carrying usage from a rejected response."""
 
-    def __init__(self, message, prompt_tokens=None, completion_tokens=None):
+    def __init__(self, message, prompt_tokens=None, completion_tokens=None, *, retryable=True):
         super().__init__(message)
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+        self.retryable = retryable
 
 
 SYSTEM_PROMPT = (
@@ -62,6 +63,9 @@ class SemanticVerdict(BaseModel):
         description="Concise summary describing the target's current behavior, posture, or state."
     )
     risk_level: RiskLevel = Field(description="Assessed risk level: NONE, LOW, MEDIUM, or HIGH.")
+    observed_events: List[str] = Field(
+        default_factory=list, description="Observable event labels from the supplied vocabulary."
+    )
 
     # Backward-compatible property aliases
     @property
@@ -164,7 +168,11 @@ class VLMJudge:
     def audit_with_usage(self, task: VLMTask) -> AuditResult:
         """Return the verdict and measured provider usage for this particular request."""
         if self.mock:
-            return AuditResult(self._mock_audit(task, simulate_delay=True), 0, 0, simulated=True)
+            verdict = self._mock_audit(task, simulate_delay=True)
+            verdict.observed_events = [
+                label for label in self.config.event_labels if label in {task.yolo_class, verdict.refined_category}
+            ]
+            return AuditResult(verdict, 0, 0, simulated=True)
 
         user_prompt = (
             f"YOLO + ByteTrack Context:\n"
@@ -175,6 +183,8 @@ class VLMJudge:
             f"- Bounding Box: {task.bbox}\n"
             f"- Escalation Trigger Reason: {task.trigger_reason}\n\n"
             "Inspect the cropped ROI image and return a structured SemanticVerdict."
+            f"\nEvent vocabulary: {self.config.event_labels}. Select only labels directly observable in this image. "
+            "Do not invent event labels; return an empty observed_events list if none apply."
         )
         data_uri = task.roi_b64 if task.roi_b64.startswith("data:image/") else f"data:image/jpeg;base64,{task.roi_b64}"
 
@@ -204,7 +214,14 @@ class VLMJudge:
             )
         except Exception as exc:
             # Avoid copying provider messages, image payloads or credentials into logs.
-            raise VLMAuditError(f"VLM request failed ({type(exc).__name__})") from exc
+            status = getattr(exc, "status_code", None)
+            retryable = (
+                isinstance(exc, (ConnectionError, TimeoutError))
+                or type(exc).__name__ in {"APIConnectionError", "APITimeoutError"}
+                or status == 429
+                or (isinstance(status, int) and status >= 500)
+            )
+            raise VLMAuditError(f"VLM request failed ({type(exc).__name__})", retryable=retryable) from exc
 
         usage = getattr(completion, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", None)
@@ -213,7 +230,16 @@ class VLMJudge:
         message = choices[0].message if choices else None
         parsed = getattr(message, "parsed", None)
         if parsed is None or getattr(message, "refusal", None):
-            raise VLMAuditError("VLM response refused or contained no parsed verdict", prompt_tokens, completion_tokens)
+            raise VLMAuditError(
+                "VLM response refused or contained no parsed verdict", prompt_tokens, completion_tokens, retryable=False
+            )
+        if set(parsed.observed_events) - set(self.config.event_labels):
+            raise VLMAuditError(
+                "VLM response contained labels outside the event vocabulary",
+                prompt_tokens,
+                completion_tokens,
+                retryable=False,
+            )
         return AuditResult(parsed, prompt_tokens, completion_tokens)
 
     def judge_roi(

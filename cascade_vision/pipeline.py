@@ -6,14 +6,19 @@ import logging
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from uuid import uuid4
 
 import cv2
 import numpy as np
 
+from .capture import video_frames
 from .config import CascadeConfig
 from .detector import CascadeTracker, Stage2Result, TrackedObject, VLMTask
+from .events import CallBudget
 from .motion import MotionGate, encode_roi_base64
 from .vlm_judge import SemanticVerdict, VLMAuditError, VLMJudge
 
@@ -36,6 +41,15 @@ class TokenAuditReport:
     cancelled_tasks: int = 0
     pending_tasks: int = 0
     simulated_calls: int = 0
+    expired_tasks: int = 0
+    budget_rejected_tasks: int = 0
+    event_export_errors: int = 0
+    reconnects: int = 0
+    detector_refresh_frames: int = 0
+    queue_wait_p95_ms: float = 0.0
+    request_e2e_p50_ms: float = 0.0
+    request_e2e_p95_ms: float = 0.0
+    latency_sample_count: int = 0
     observed_prompt_tokens: int = 0
     observed_completion_tokens: int = 0
     usage_missing_calls: int = 0
@@ -64,6 +78,8 @@ class CascadePipeline:
         motion_gate: Optional[MotionGate] = None,
         tracker: Optional[CascadeTracker] = None,
         vlm_judge: Optional[VLMJudge] = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        call_budget: Optional[CallBudget] = None,
     ) -> None:
         self.config = config or CascadeConfig()
         if mock_vlm is not None:
@@ -86,6 +102,19 @@ class CascadePipeline:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._verdict_frames: Dict[int, int] = {}
+        self._verdict_times: Dict[int, float] = {}
+        self._stream_epoch = 0
+        self._session_id = str(uuid4())
+        self.event_callback = event_callback
+        self.call_budget = call_budget or CallBudget(self.config.max_vlm_calls)
+        self._queue_wait_samples = deque(maxlen=4096)
+        self._e2e_samples = deque(maxlen=4096)
+        self.expired_tasks = 0
+        self.budget_rejected_tasks = 0
+        self.event_export_errors = 0
+        self.reconnects = 0
+        self.detector_refresh_frames = 0
+        self._next_sample_s = 0.0
         self._workers: List[threading.Thread] = []
 
         # Funnel telemetry counters
@@ -139,12 +168,15 @@ class CascadePipeline:
         self._stop_event.set()
         while True:
             try:
-                self.task_queue.get_nowait()
+                cancelled = self.task_queue.get_nowait()
             except queue.Empty:
                 break
             else:
                 with self._lock:
                     self.cancelled_tasks += 1
+                if cancelled is not None:
+                    self.tracker.release_audit(cancelled)
+                    self._emit("cancelled", cancelled)
                 self.task_queue.task_done()
         for worker in self._workers:
             worker.join(timeout=max(0.0, deadline - time.perf_counter()))
@@ -158,6 +190,44 @@ class CascadePipeline:
         self.observed_prompt_tokens += result.prompt_tokens or 0
         self.observed_completion_tokens += result.completion_tokens or 0
 
+    def _emit(self, status, task=None, **details):
+        if self.event_callback is None:
+            return
+        event = {
+            "schema_version": 1,
+            "session_id": self._session_id,
+            "status": status,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            **details,
+        }
+        if task is not None:
+            event.update(
+                frame_idx=task.frame_idx,
+                track_id=task.track_id,
+                stream_epoch=task.stream_epoch,
+                media_timestamp_s=task.media_timestamp_s,
+                trigger_reason=task.trigger_reason,
+                yolo_class=task.yolo_class,
+                yolo_conf=task.yolo_conf,
+                bbox=task.bbox,
+                attempt=task.attempt,
+                completion_elapsed_s=time.perf_counter() - self._start_time,
+            )
+        try:
+            self.event_callback(event)
+        except Exception:
+            with self._lock:
+                self.event_export_errors += 1
+            logger.error("Event export failed; inspect event_export_errors")
+
+    def get_verdict(self, track_id):
+        """Return only a current, unexpired verdict."""
+        with self._lock:
+            completed = self._verdict_times.get(track_id)
+            if completed is None or time.monotonic() - completed >= self.config.verdict_ttl_s:
+                return None
+            return self.verdict_cache.get(track_id)
+
     def _consumer_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
@@ -167,41 +237,91 @@ class CascadePipeline:
             if task is None:
                 self.task_queue.task_done()
                 continue
-            started = time.perf_counter()
+            started = time.monotonic()
+            wait = max(0.0, started - task.created_monotonic)
+            if wait > self.config.max_task_age_s or task.stream_epoch != self._stream_epoch:
+                with self._lock:
+                    self.expired_tasks += 1
+                if task.stream_epoch == self._stream_epoch:
+                    self.tracker.release_audit(task)
+                self._emit("expired", task, queue_wait_ms=1000 * wait)
+                self.task_queue.task_done()
+                continue
+            if not self.call_budget.acquire():
+                with self._lock:
+                    self.budget_rejected_tasks += 1
+                self.tracker.release_audit(task)
+                self._emit("budget_rejected", task)
+                self.task_queue.task_done()
+                continue
             with self._lock:
                 self.vlm_calls += 1
             try:
                 result = self.vlm_judge.audit_with_usage(task)
+                finished = time.monotonic()
                 with self._lock:
                     self._record_usage(result)
                     self.vlm_completed_calls += 1
                     self.simulated_calls += int(result.simulated)
-                    # A slow old response must never replace a newer verdict.
-                    if task.frame_idx >= self._verdict_frames.get(task.track_id, -1):
+                    applied = task.stream_epoch == self._stream_epoch and task.frame_idx >= self._verdict_frames.get(
+                        task.track_id, -1
+                    )
+                    if applied:
                         self.verdict_cache.pop(task.track_id, None)
                         self.verdict_cache[task.track_id] = result.verdict
                         self._verdict_frames[task.track_id] = task.frame_idx
+                        self._verdict_times[task.track_id] = finished
                         while len(self.verdict_cache) > self.config.max_cached_tracks:
                             oldest = next(iter(self.verdict_cache))
                             self.verdict_cache.pop(oldest)
                             self._verdict_frames.pop(oldest, None)
+                            self._verdict_times.pop(oldest, None)
+                if applied:
+                    self.tracker.complete_audit(task, success=True)
+                self._emit(
+                    "completed",
+                    task,
+                    verdict=result.verdict.model_dump(),
+                    simulated=result.simulated,
+                    applied=applied,
+                    prompt_tokens=result.prompt_tokens,
+                    completion_tokens=result.completion_tokens,
+                    queue_wait_ms=1000 * wait,
+                    service_ms=1000 * (finished - started),
+                    request_e2e_ms=1000 * (finished - task.created_monotonic),
+                )
             except Exception as exc:
+                retryable = isinstance(exc, VLMAuditError) and exc.retryable
                 with self._lock:
                     self.failed_tasks += 1
                     if isinstance(exc, VLMAuditError):
                         self._record_usage(exc)
                     else:
                         self.usage_missing_calls += 1
+                if task.stream_epoch == self._stream_epoch:
+                    self.tracker.complete_audit(task, success=False, retryable=retryable)
+                self._emit(
+                    "failed",
+                    task,
+                    error_type=type(exc).__name__,
+                    retryable=retryable,
+                    prompt_tokens=getattr(exc, "prompt_tokens", None),
+                    completion_tokens=getattr(exc, "completion_tokens", None),
+                    queue_wait_ms=1000 * wait,
+                    service_ms=1000 * (time.monotonic() - started),
+                )
                 logger.warning("VLM inspection failed for track #%s (%s)", task.track_id, type(exc).__name__)
             finally:
-                latency = time.perf_counter() - started
+                latency = time.monotonic() - started
                 with self._lock:
                     self._audit_latency_total += latency
                     self._audit_latency_max = max(self._audit_latency_max, latency)
+                    self._queue_wait_samples.append(1000 * wait)
+                    self._e2e_samples.append(1000 * (time.monotonic() - task.created_monotonic))
                 self.task_queue.task_done()
 
     def process_frame(
-        self, frame: np.ndarray, render_hud: bool = True
+        self, frame: np.ndarray, render_hud: bool = True, *, media_timestamp_s=None
     ) -> Tuple[np.ndarray, bool, float, Optional[Stage2Result]]:
         """Producer step for a single frame: Stage 1 -> Stage 2 -> non-blocking Queue push -> HUD."""
         if self.total_frames == 0:
@@ -215,36 +335,50 @@ class CascadePipeline:
         motion_passed, motion_ratio = self.motion_gate.check_motion(frame)
         stage2_result: Optional[Stage2Result] = None
 
-        if not motion_passed:
-            self.stage1_intercepted += 1
-        else:
+        if motion_passed:
             self.stage1_passed += 1
-            # Stage 2: CascadeTracker
-            tracked_objects, vlm_tasks = self.tracker.process_frame(frame, frame_idx=frame_idx)
-            stage2_result = Stage2Result(
-                frame_idx=frame_idx,
-                tracked_objects=tracked_objects,
-                vlm_tasks=vlm_tasks,
-            )
-            if not vlm_tasks:
-                self.stage2_intercepted += 1
+        else:
+            self.stage1_intercepted += 1
+        periodic = (
+            self.config.detector_refresh_interval_frames > 0
+            and frame_idx % self.config.detector_refresh_interval_frames == 0
+        )
+        if self.config.strategy == "cascade":
+            run_detector = motion_passed or periodic
+            if periodic and not motion_passed:
+                self.detector_refresh_frames += 1
+            tracked_objects, vlm_tasks = self.tracker.process_frame(frame, frame_idx) if run_detector else ([], [])
+        else:
+            if self.config.strategy == "interval":
+                if media_timestamp_s is None:
+                    raise ValueError("Interval sampling requires video timestamps / source_fps")
+                selected = media_timestamp_s + 1e-9 >= self._next_sample_s
+                if selected:
+                    self._next_sample_s = media_timestamp_s + self.config.sample_interval_s
             else:
-                for task in vlm_tasks:
-                    if not task.roi_b64:
-                        task.roi_b64 = encode_roi_base64(
-                            frame,
-                            task.bbox,
-                            padding_ratio=self.config.roi_padding_ratio,
-                            jpeg_quality=self.config.jpeg_quality,
-                        )
-                    self.stage2_flagged_tasks += 1
-                    try:
-                        self.task_queue.put_nowait(task)
-                    except queue.Full:
-                        self.dropped_tasks += 1
-                        # A task that never entered the queue must not consume its cooldown.
-                        if self.tracker.last_audited_frame.get(task.track_id) == task.frame_idx:
-                            self.tracker.last_audited_frame.pop(task.track_id, None)
+                selected = self.config.strategy == "full" or motion_passed
+            tracked_objects = []
+            h, w = frame.shape[:2]
+            vlm_tasks = (
+                [VLMTask(frame_idx, 0, "scene", 1.0, [0, 0, w, h], self.config.strategy.upper())] if selected else []
+            )
+        stage2_result = Stage2Result(frame_idx, tracked_objects, vlm_tasks)
+        if not vlm_tasks:
+            self.stage2_intercepted += 1
+        for task in vlm_tasks:
+            task.media_timestamp_s = media_timestamp_s
+            task.stream_epoch = self._stream_epoch
+            if not task.roi_b64:
+                task.roi_b64 = encode_roi_base64(
+                    frame, task.bbox, padding_ratio=self.config.roi_padding_ratio, jpeg_quality=self.config.jpeg_quality
+                )
+            self.stage2_flagged_tasks += 1
+            try:
+                self.task_queue.put_nowait(task)
+            except queue.Full:
+                self.dropped_tasks += 1
+                self.tracker.release_audit(task)
+                self._emit("dropped", task)
 
         annotated = (
             self.render_hud(
@@ -269,7 +403,12 @@ class CascadePipeline:
         """Render bounding boxes and ``[VLM: {refined_category} | {risk_level}]`` on the frame."""
         canvas = frame.copy()
         with self._lock:
-            verdict_snapshot = dict(self.verdict_cache)
+            now = time.monotonic()
+            verdict_snapshot = {
+                tid: verdict
+                for tid, verdict in self.verdict_cache.items()
+                if now - self._verdict_times.get(tid, 0) < self.config.verdict_ttl_s
+            }
             completed_calls = self.vlm_completed_calls
 
         for obj in tracked_objects:
@@ -356,6 +495,15 @@ class CascadePipeline:
                 cancelled_tasks=self.cancelled_tasks,
                 pending_tasks=pending,
                 simulated_calls=self.simulated_calls,
+                expired_tasks=self.expired_tasks,
+                budget_rejected_tasks=self.budget_rejected_tasks,
+                event_export_errors=self.event_export_errors,
+                reconnects=self.reconnects,
+                detector_refresh_frames=self.detector_refresh_frames,
+                queue_wait_p95_ms=float(np.percentile(self._queue_wait_samples, 95)) if self._queue_wait_samples else 0,
+                request_e2e_p50_ms=float(np.percentile(self._e2e_samples, 50)) if self._e2e_samples else 0,
+                request_e2e_p95_ms=float(np.percentile(self._e2e_samples, 95)) if self._e2e_samples else 0,
+                latency_sample_count=len(self._e2e_samples),
                 observed_prompt_tokens=self.observed_prompt_tokens,
                 observed_completion_tokens=self.observed_completion_tokens,
                 usage_missing_calls=self.usage_missing_calls,
@@ -373,64 +521,74 @@ class CascadePipeline:
     def get_metrics_summary(self) -> Dict[str, Any]:
         return self.compute_audit_report().to_dict()
 
+    def _on_disconnect(self):
+        with self._lock:
+            self._stream_epoch += 1
+            self.verdict_cache.clear()
+            self._verdict_frames.clear()
+            self._verdict_times.clear()
+        self.tracker.reset()
+        self.motion_gate.reset()
+        self._emit("stream_disconnected", stream_epoch=self._stream_epoch)
+
+    def _on_reconnect(self):
+        self.reconnects += 1
+        self._emit("stream_reconnected", stream_epoch=self._stream_epoch)
+
     def run_stream(
         self,
         frame_source: Union[str, int, Iterable[np.ndarray]],
         *,
-        headless: bool = True,
-        max_frames: Optional[int] = None,
-        on_step: Optional[Callable[[TokenAuditReport, Optional[Stage2Result]], None]] = None,
-        drain_timeout: float = 30.0,
+        headless=True,
+        max_frames=None,
+        on_step=None,
+        drain_timeout=30.0,
+        source_fps=None,
+        realtime=False,
     ) -> TokenAuditReport:
-        """Run the producer-consumer pipeline over a camera index, video file, or frame iterable."""
+        """Process video or an iterable; real-time pacing is opt-in for evaluation."""
         if self.total_frames:
             raise RuntimeError("Use a new CascadePipeline for each stream")
-        self.start_workers()
         self._start_time = time.perf_counter()
         self._end_time = None
-
-        cap: Optional[cv2.VideoCapture] = None
         if isinstance(frame_source, (str, int)):
-            src: Union[str, int] = (
-                int(frame_source) if isinstance(frame_source, str) and frame_source.strip().isdigit() else frame_source
+            iterator = video_frames(
+                frame_source, self.config, on_disconnect=self._on_disconnect, on_reconnect=self._on_reconnect
             )
-            cap = cv2.VideoCapture(src)
-            if not cap.isOpened():
-                self.stop_workers(drain=False)
-                raise RuntimeError(f"Unable to open video source: {frame_source!r}")
-
-            def _iter_frames() -> Iterable[np.ndarray]:
-                assert cap is not None
-                while True:
-                    ok, frm = cap.read()
-                    if not ok or frm is None:
-                        break
-                    yield frm
-
-            iterator: Iterable[np.ndarray] = _iter_frames()
         else:
-            iterator = frame_source
-
+            if source_fps is not None and (not np.isfinite(source_fps) or source_fps <= 0):
+                raise ValueError("source_fps must be finite and positive")
+            iterator = ((frame, idx / source_fps if source_fps else None) for idx, frame in enumerate(frame_source))
+        self.start_workers()
+        playback_started = None
         try:
-            for frame in iterator:
-                if max_frames is not None and self.total_frames >= max_frames:
+            # Check the limit before asking a live capture for another frame.
+            while max_frames is None or self.total_frames < max_frames:
+                try:
+                    frame, timestamp = next(iterator)
+                except StopIteration:
                     break
-                annotated, _passed, _ratio, s2 = self.process_frame(frame, render_hud=not headless)
-                if on_step is not None:
+                if playback_started is None:
+                    playback_started = time.perf_counter()
+                    self._start_time = playback_started
+                if realtime:
+                    if timestamp is None:
+                        raise ValueError("Real-time replay requires source timestamps")
+                    time.sleep(max(0.0, playback_started + timestamp - time.perf_counter()))
+                annotated, _passed, _ratio, s2 = self.process_frame(
+                    frame, render_hud=not headless, media_timestamp_s=timestamp
+                )
+                if on_step:
                     on_step(self.compute_audit_report(), s2)
                 if not headless:
                     cv2.imshow("cascade-vision HUD", annotated)
-                    if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
         finally:
-            if cap is not None:
-                cap.release()
+            if hasattr(iterator, "close"):
+                iterator.close()
             if not headless:
-                try:
-                    cv2.destroyAllWindows()
-                except Exception:
-                    pass
+                cv2.destroyAllWindows()
             self.stop_workers(drain=True, timeout=drain_timeout)
             self._end_time = time.perf_counter()
-
         return self.compute_audit_report()

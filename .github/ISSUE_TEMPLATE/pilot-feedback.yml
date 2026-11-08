@@ -1,0 +1,36 @@
+name: Pilot feedback
+description: Report an independent installation or integration attempt
+title: "[Pilot] "
+body:
+  - type: markdown
+    attributes:
+      value: "Share only sanitized information. Do not attach keys, private footage or credential-bearing URLs."
+  - type: input
+    id: version
+    attributes:
+      label: Release or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: OS, Python, hardware and dependency versions
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case and what you tried
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Results, failures and reproducible steps
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional sanitized metrics or logs
+      description: State whether detector/VLM/footage were simulated; describe annotation and sampling policies.

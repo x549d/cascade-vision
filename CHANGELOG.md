@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- Add bounded, fresh-frame retries with backoff, non-retryable failures and pending-request suppression.
+- Refresh successful verdicts by TTL/frame interval and periodically detect static frames.
+- Export per-task JSONL events with usage, queue/service/e2e latency, lifecycle states and callback error counters.
+- Expire stale queued tasks, cap total VLM attempts and isolate results across RTSP reconnect epochs.
+- Reconnect RTSP with bounded consecutive attempts and FFmpeg open/read timeouts.
+- Add annotated local-video comparisons for interval/motion/cascade/full policies, one-to-one episode scoring and paced event latency.
+- Flag synthetic footage, simulation, incomplete clips and lossy runs; require explicit paid-benchmark opt-in and a shared attempt cap.
+- Provide a synthetic fixture generator, real-video manifest, pilot feedback materials and a proposed six-month maintenance plan.
+
+Behavior changes: periodic static detection and verdict refresh can increase API attempts. Use `--max-api-calls` or `max_vlm_calls` to cap requests. `get_verdict()` enforces TTL; raw cache access does not. No real-video validation or independent adoption is claimed by this release.
+
 ## 0.2.0
 
 - Require explicit simulation; API errors, refusals and empty YOLO detections never become synthetic successes.

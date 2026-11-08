@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event_labels": ["person", "backpack"],
+  "clips": [
+    {
+      "id": "your-clip",
+      "path": "your-licensed-video.mp4",
+      "footage_type": "real",
+      "license": "REPLACE with footage license or explicit permission; template only",
+      "events": [
+        {"id": "person-1", "label": "person", "start_s": 1.0, "end_s": 4.0}
+      ]
+    }
+  ]
+}

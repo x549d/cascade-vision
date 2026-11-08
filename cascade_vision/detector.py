@@ -13,6 +13,8 @@ Implements :class:`VLMTask` and :class:`CascadeTracker` with:
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -32,6 +34,8 @@ class TriggerReason(str, Enum):
     FIRST_SEEN_PRIORITY = "FIRST_SEEN_PRIORITY"
     LOW_CONF_HARD_EXAMPLE = "LOW_CONF_HARD_EXAMPLE"
     OBJECT_INTERACTION = "OBJECT_INTERACTION"
+    AUDIT_RETRY = "AUDIT_RETRY"
+    VERDICT_REFRESH = "VERDICT_REFRESH"
 
     # Backward-compatible aliases
     NEW_PRIORITY_TARGET = "FIRST_SEEN_PRIORITY"
@@ -51,6 +55,10 @@ class VLMTask:
     trigger_reason: str
     roi_b64: str = ""
     partner_track_id: Optional[int] = None
+    created_monotonic: float = field(default_factory=time.monotonic)
+    media_timestamp_s: Optional[float] = None
+    stream_epoch: int = 0
+    attempt: int = 1
 
     @property
     def class_name(self) -> str:
@@ -198,8 +206,16 @@ class CascadeTracker:
         config: Optional[CascadeConfig] = None,
         model: Optional[Any] = None,
         use_fallback_if_unavailable: bool = False,
+        clock=None,
     ) -> None:
         self.config = config or CascadeConfig()
+        self._clock = clock or time.monotonic
+        self._state_lock = threading.RLock()
+        self._pending_frames: Dict[int, int] = {}
+        self._failures: Dict[int, int] = {}
+        self._retry_after: Dict[int, float] = {}
+        self._permanent_failures: Set[int] = set()
+        self._last_success: Dict[int, Tuple[int, float]] = {}
         self.priority_set: Set[str] = {c.lower().strip() for c in self.config.priority_classes}
 
         # Per-track state machine counters:
@@ -239,6 +255,10 @@ class CascadeTracker:
                         raise
 
     def reset(self) -> None:
+        with self._state_lock:
+            self._reset()
+
+    def _reset(self) -> None:
         """Reset all per-track streak counters and cooldown states."""
         self.streak_count.clear()
         self.last_audited_frame.clear()
@@ -246,6 +266,50 @@ class CascadeTracker:
         self._last_evaluation.clear()
         self._evaluation_idx = 0
         self._fallback_tracker.reset()
+        self._pending_frames.clear()
+        self._failures.clear()
+        self._retry_after.clear()
+        self._permanent_failures.clear()
+        self._last_success.clear()
+        # Ultralytics retains its own tracker when persist=True.
+        for tracker in getattr(getattr(self.model, "predictor", None), "trackers", []):
+            tracker.reset()
+
+    def release_audit(self, task: VLMTask) -> None:
+        """Release an unsent/expired reservation without charging the retry budget."""
+        with self._state_lock:
+            if self._pending_frames.get(task.track_id) == task.frame_idx:
+                self._pending_frames.pop(task.track_id, None)
+                if self.last_audited_frame.get(task.track_id) == task.frame_idx:
+                    self.last_audited_frame.pop(task.track_id, None)
+
+    def complete_audit(self, task: VLMTask, *, success: bool, retryable: bool = True) -> None:
+        with self._state_lock:
+            tid = task.track_id
+            if self._pending_frames.get(tid) != task.frame_idx:
+                return
+            self._pending_frames.pop(tid, None)
+            if success:
+                self._last_success[tid] = (task.frame_idx, self._clock())
+                self._failures.pop(tid, None)
+                self._retry_after.pop(tid, None)
+                self._permanent_failures.discard(tid)
+            else:
+                failures = self._failures.get(tid, 0) + 1
+                self._failures[tid] = failures
+                if not retryable or failures > self.config.audit_max_retries:
+                    self._permanent_failures.add(tid)
+                delay = min(self.config.retry_backoff_max_s, self.config.retry_backoff_s * 2 ** min(failures - 1, 20))
+                self._retry_after[tid] = self._clock() + delay
+
+    def clear_audit_failure(self, track_id: int) -> None:
+        """Explicitly permit another bounded retry cycle for an exhausted track."""
+        with self._state_lock:
+            if track_id not in self._pending_frames:
+                self._failures.pop(track_id, None)
+                self._retry_after.pop(track_id, None)
+                self._permanent_failures.discard(track_id)
+                self.last_audited_frame.pop(track_id, None)
 
     @staticmethod
     def compute_iou(box_a: Sequence[float], box_b: Sequence[float]) -> float:
@@ -326,7 +390,11 @@ class CascadeTracker:
 
         return extracted
 
-    def evaluate_detections(
+    def evaluate_detections(self, raw_detections, frame_idx, frame=None) -> Stage2Result:
+        with self._state_lock:
+            return self._evaluate_detections(raw_detections, frame_idx, frame)
+
+    def _evaluate_detections(
         self,
         raw_detections: Sequence[Tuple[int, str, float, Sequence[float]]],
         frame_idx: int,
@@ -352,6 +420,11 @@ class CascadeTracker:
                 self._last_evaluation.pop(tid, None)
                 self.streak_count.pop(tid, None)
                 self.last_audited_frame.pop(tid, None)
+                self._pending_frames.pop(tid, None)
+                self._failures.pop(tid, None)
+                self._retry_after.pop(tid, None)
+                self._last_success.pop(tid, None)
+                self._permanent_failures.discard(tid)
         for tid, cls_name, conf, bbox in raw_detections:
             active_ids.add(tid)
             if self._last_evaluation.get(tid) == self._evaluation_idx - 1:
@@ -390,15 +463,35 @@ class CascadeTracker:
         # 3. Evaluate Conditions A, B, C with anti-bounce cooldown
         vlm_tasks: List[VLMTask] = []
         for obj in tracked_objects:
-            if not self._is_cooled_down(obj.track_id, frame_idx):
+            tid = obj.track_id
+            if tid in self._pending_frames or tid in self._permanent_failures:
+                continue
+            retry = self._failures.get(tid, 0) > 0
+            if retry:
+                if self._clock() < self._retry_after.get(tid, 0):
+                    continue
+            elif not self._is_cooled_down(tid, frame_idx):
                 continue
 
             is_priority = obj.yolo_class.lower() in self.priority_set
             reason: Optional[TriggerReason] = None
             partner_id: Optional[int] = None
 
+            success = self._last_success.get(tid)
+            refresh = success is not None and (
+                self._clock() - success[1] >= self.config.verdict_ttl_s
+                or (
+                    self.config.refresh_interval_frames > 0
+                    and frame_idx - success[0] >= self.config.refresh_interval_frames
+                )
+            )
+            if retry:
+                reason = TriggerReason.AUDIT_RETRY
+            elif refresh:
+                reason = TriggerReason.VERDICT_REFRESH
+
             # Condition A: FIRST_SEEN_PRIORITY (priority class + stable detector observations >= min_stable_frames)
-            if (
+            elif (
                 is_priority
                 and obj.streak_count >= self.config.min_stable_frames
                 and obj.track_id not in self.last_audited_frame
@@ -417,6 +510,7 @@ class CascadeTracker:
             if reason is not None:
                 obj.trigger_reason = reason.value
                 self.last_audited_frame[obj.track_id] = frame_idx
+                self._pending_frames[obj.track_id] = frame_idx
                 roi_b64 = ""
                 if frame is not None and frame.size > 0:
                     roi_b64 = MotionGate.encode_roi_base64(
@@ -435,6 +529,7 @@ class CascadeTracker:
                         trigger_reason=reason.value,
                         roi_b64=roi_b64,
                         partner_track_id=partner_id,
+                        attempt=self._failures.get(obj.track_id, 0) + 1,
                     )
                 )
 

@@ -21,3 +21,19 @@ cascade-vision demo --mock-vlm --report-json reports/demo.json
 - 跳过原始帧不会中断连续检测观测计数；检测器明确未发现目标时重置计数。
 
 见 [贡献指南](CONTRIBUTING.md) 和 [评测方法](docs/BENCHMARKS.md)。暂不提供未经验证的生产级可靠性或节省比例承诺。
+
+
+## 0.3 新增能力
+
+- 失败后按退避策略对新画面重试；有重试上限，拒答和鉴权错误不自动重试。
+- 成功结果按帧间隔或 TTL 刷新，静态画面可定期检测；读取结果可使用 `get_verdict()` 检查有效期。
+- 使用 `--events-jsonl` 导出逐条审查事件、失败原因类型、用量和排队/端到端耗时。
+- RTSP 断线后有限重连，重置跟踪状态，并隔离旧连接的异步结果。
+- `benchmark` 命令支持固定间隔、运动筛选、完整级联和逐帧策略，匹配标注后计算事件指标。
+
+```bash
+python examples/generate_fixture.py --output-dir reports/fixture
+cascade-vision benchmark --manifest reports/fixture/manifest.json --output-dir reports/comparison --mock-vlm --yolo-model mock
+```
+
+上述素材是合成测试。真实素材必须具备使用权限；真实 API 评测需显式指定 `--allow-api --max-api-calls 正整数`。调用次数限制不是美元额度限制。详见 [评测方法](docs/BENCHMARKS.md)、[事件接口](docs/EVENTS.md)、[试用流程](docs/PILOT_GUIDE.md) 和 [申请准备与六个月计划](docs/OSS_APPLICATION.md)。
