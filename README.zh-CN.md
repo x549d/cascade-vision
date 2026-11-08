@@ -4,6 +4,8 @@
 
 **当前为早期 alpha。** 已提供离线演示与回归测试，尚未验证真实视频的事件召回率、准确率和成本节省比例。完整接口说明见 [English README](README.md)。
 
+首次使用请阅读 [完整中文使用与评测指南](docs/GUIDE.zh-CN.md)，包含 Windows/Linux 安装、零 API 预算运行、事件导出、参数说明和故障排查。
+
 ```bash
 git clone https://github.com/x549d/cascade-vision.git
 cd cascade-vision
