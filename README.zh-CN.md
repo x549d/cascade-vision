@@ -1,99 +1,98 @@
-# cascade-vision — Cascaded Video Understanding / 级联视频语义分析
+# cascade-vision — Detect Objects in Video and Describe Their Activity / 检测视频目标并描述其活动
 
-**通过本地运动筛选、目标检测与跟踪，选择需要 VLM 分析的画面区域，输出结构化语义事件，并评测不同策略的调用量、召回率和延迟。**
 
-[English / 首页](README.md) · [完整中文指南](docs/GUIDE.zh-CN.md) · [版本下载](https://github.com/x549d/cascade-vision/releases) · [事件接口](docs/EVENTS.md)
+[英文版](README.md) · [版本下载](https://github.com/x549d/cascade-vision/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
 
-## Purpose / 项目作用
+## 简介
 
-`cascade-vision` 是一个开源 Python 库与命令行工具，适合开发视频语义分析原型、接入事件结果，以及研究画面筛选与模型调用之间的权衡。
+`cascade-vision` 是一个 Python 视频分析库与命令行工具，用来检测视频中的目标，选择需要进一步分析的目标画面，再通过视觉语言模型描述目标类别和活动，输出可供其他程序读取的结构化记录。
 
-处理流程为：**视频输入 → OpenCV 运动门控 → YOLO + ByteTrack 检测跟踪 → 触发与裁剪 → 异步 VLM 分析 → 结构化结论与事件文件**。
+你可以先运行自带的离线演示，再接入视频文件、摄像头或 RTSP 视频流。项目目前处于早期 alpha 阶段，真实场景准确率和成本节省仍需验证。
 
-- 筛选画面：结合运动变化和定期检测，决定何时运行目标检测器。
-- 选择目标：对优先目标、低置信度或重叠目标触发语义审查。
-- 返回事件：导出类别、活动摘要、事件标签、任务状态、用量和耗时。
-- 恢复故障：支持有限重试、结果刷新、队列过期及 RTSP 重连。
-- 比较策略：使用带标注视频比较固定间隔、运动筛选、级联和逐帧策略。
+## 项目有何作用
 
-**当前为早期 alpha。** 工具和离线回归测试已经可用，真实视频准确率、成本节省及独立采用效果仍待验证。
+它适合用来搭建视频分析原型：从选中的画面中得到目标类别、活动摘要和事件标签。例如，你可以对片段中选中的人员或背包进行分析，保存描述结果，并比较不同画面筛选方式对事件召回率和模型调用量的影响。
 
-## Quick Start / 快速开始
+程序负责本地运动筛选、目标检测与跟踪、后台模型请求、有限的失败恢复，以及事件导出。对于有事件标注的视频，还能比较固定间隔抽帧、运动筛选和完整级联等策略。
 
-需要 Python 3.9 或以上版本。在终端中执行：
+最终主要得到两类输出：**本次运行的汇总报告**和**逐条任务结果**。默认通过终端和文件使用，也可以通过 Python 接口接入其他系统。
+
+## 怎么用
+
+### 没有摄像头、视频和密钥，先运行离线演示
+
+使用 Python 3.9 或更高版本，在终端执行：
 
 ```bash
 git clone https://github.com/x549d/cascade-vision.git
 cd cascade-vision
 python -m pip install -e .
-python -m cascade_vision.cli demo --mock-vlm --report-json reports/demo.json --events-jsonl reports/events.jsonl
+python -m cascade_vision.cli demo --mock-vlm --event-labels person,backpack --report-json reports/demo.json --events-jsonl reports/events.jsonl
 ```
 
-演示自行生成合成画面。依赖安装完成后，不需要本地视频、摄像头、模型权重或 API 密钥，不产生 VLM API 费用。模拟语义结果来自预设规则。
+演示会生成合成画面，使用简单轮廓检测和预设的模拟描述。依赖安装完成后，不发送 API 请求，也不下载检测模型权重。模拟描述用于展示输出格式，不能证明识别准确率。
 
-| 输出 | 作用 |
-| --- | --- |
-| `reports/demo.json` | 查看版本、运行模式及汇总指标 |
-| `reports/events.jsonl` | 查看逐条任务状态、语义结论、用量与耗时 |
+### 分析自己的视频
 
-## Examples / 使用示例
-
-### Offline Comparison / 离线策略对比
-
-```bash
-python examples/generate_fixture.py --output-dir reports/fixture
-python -m cascade_vision.cli benchmark --manifest reports/fixture/manifest.json --output-dir reports/comparison --mock-vlm --yolo-model mock
-```
-
-生成配套视频与标注，比较三种默认策略。主报告位于 `reports/comparison/benchmark.json`，各策略另有 JSONL 事件文件。合成素材和模拟模式会被明确标注。
-
-### Local Video / 本地视频
+先安装真实检测器，将路径换成有权处理的视频，并使用模拟语义模式检查流程：
 
 ```bash
 python -m pip install -e ".[yolo]"
 python -m cascade_vision.cli run --source local/video.mp4 --mock-vlm --headless --max-frames 300 --event-labels person,backpack --report-json reports/local.json --events-jsonl reports/local-events.jsonl
 ```
 
-将路径替换为有权使用的视频。此模式运行真实 YOLO 检测与跟踪，但 VLM 仍是模拟，不发送 VLM API 请求；YOLO 权重可能在首次使用时下载。
+此时检测与跟踪是真实执行的，语义描述仍为模拟结果；YOLO 权重可能在首次使用时下载。摄像头可使用 `--source 0`，视频流则传入 RTSP 地址。
 
-### Real VLM / 真实语义分析
-
-具备 API 预算时可设置 `OPENAI_API_KEY`，去掉 `--mock-vlm`：
+需要真实语义描述时，设置 `OPENAI_API_KEY` 并去掉 `--mock-vlm`。例如：
 
 ```bash
 python -m cascade_vision.cli run --source local/video.mp4 --max-frames 300 --max-api-calls 10 --event-labels person,backpack --report-json reports/api.json --events-jsonl reports/api-events.jsonl
 ```
 
-PowerShell 使用 `$env:OPENAI_API_KEY = "your-key"`；Bash 使用 `export OPENAI_API_KEY="your-key"`。真实模式会发送裁剪图像并可能产生费用；次数上限包括重试，不是美元预算上限。
+PowerShell 使用 `$env:OPENAI_API_KEY = "your-key"`，Bash 使用 `export OPENAI_API_KEY="your-key"` 设置密钥。真实模式会向服务商发送裁剪图像，并可能产生费用。次数上限包括重试，不等同于美元预算上限。没有 API 预算时使用离线演示即可。
 
-### Python API / Python 接入
+### 对比画面筛选策略
 
-```python
-from cascade_vision import CascadeConfig, CascadePipeline
-from cascade_vision.cli import generate_synthetic_stream
-
-config = CascadeConfig.from_env(mock_vlm=True, yolo_model="mock")
-pipeline = CascadePipeline(config)
-report = pipeline.run_stream(generate_synthetic_stream(), source_fps=30)
-print(report.to_dict())
+```bash
+python examples/generate_fixture.py --output-dir reports/fixture
+python -m cascade_vision.cli benchmark --manifest reports/fixture/manifest.json --output-dir reports/comparison --mock-vlm --yolo-model mock
 ```
 
-## Configuration and Evaluation / 配置与评测
+这会对同一段带标注的合成视频运行默认策略。真实素材的评测需要准备授权说明和事件标注，并显式允许 API 调用、设置共享次数上限。Windows/Linux 安装步骤、参数配置和 Python 接入方法见 [完整中文指南](docs/GUIDE.zh-CN.md)。
 
-使用 `CASCADE_<字段名大写>` 环境变量或 `CascadeConfig.from_env()` 配置参数。常见项包括队列容量、工作线程数、失败重试、结果有效期、静态画面检测间隔和总尝试次数限制。
+## 结果怎么看
 
-评测结果应同时观察事件召回率、误报、调用用量和端到端延迟，并检查失败、丢弃、过期和额度耗尽标记。合成演示不能证明真实场景效果。
+离线演示会在终端打印汇总信息，同时写入两个文件：
 
-完整的 Windows/Linux 安装命令、配置表、事件状态、评分规则和故障排查见 [中文使用与评测指南](docs/GUIDE.zh-CN.md)。
+| 文件 | 看什么 |
+| --- | --- |
+| `reports/demo.json` | 运行模式、处理帧数、任务成功与失败数量、已观测用量和耗时 |
+| `reports/events.jsonl` | 每行一个任务结果，包含状态、目标信息、描述和已知用量 |
 
-## Documentation / 更多文档
+例如，一条完成的**模拟记录**可以包含下面这些字段。以下为精简后的输出示意：
 
-- [评测流程](docs/BENCHMARKS.md)：视频清单、策略对比与结果有效性。
-- [事件接口](docs/EVENTS.md)：JSONL 格式、回调接入和结果有效期。
-- [试用指南](docs/PILOT_GUIDE.md)：独立试用流程与反馈方式。
-- [贡献指南](CONTRIBUTING.md)：开发、测试和贡献约定。
-- [更新日志](CHANGELOG.md)：版本变化与迁移说明。
+```json
+{
+  "status": "completed",
+  "track_id": 1,
+  "simulated": true,
+  "applied": true,
+  "verdict": {
+    "is_valid_target": true,
+    "refined_category": "courier",
+    "activity_summary": "A courier is walking briskly across the monitored corridor carrying a parcel.",
+    "risk_level": "NONE",
+    "observed_events": ["person"]
+  }
+}
+```
 
-## License / 许可证
+`refined_category` 是描述中的目标类别，`activity_summary` 是活动描述，`observed_events` 是从配置词表中选出的标签。当前默认提示词和模拟描述使用英文，中文文档不会改变模型输出语言。
 
-项目源码使用 [MIT 许可证](LICENSE)。第三方软件、模型权重与素材保留各自的许可证和使用条件。
+`simulated: true` 表示预设的模拟结果。真实请求失败或被拒答时，不会被替换成模拟成功结论。`applied: false` 表示该响应过旧或来自上一代连接，未被用于更新当前缓存。
+
+查看汇总报告时，先检查 `failed_tasks`、`dropped_tasks`、`expired_tasks` 和 `budget_rejected_tasks`，再解读吞吐与筛选效果。`actual_tokens` 使用响应返回的 API 用量：模拟调用为零，完整用量未知时可能为 `null`。成本估算需要自行配置价格，不等于实际账单。
+
+策略对比的主报告位于 `reports/comparison/benchmark.json`。将精确率、召回率和误报与 `quality_flags` 一起看。合成素材和模拟推理会被明确标记，`comparison_ready` 为 `false`；这是验证范围的说明。请求耗时包含排队和模型处理，事件到结论延迟则需要带标注的视频按实时节奏回放。
+
+进一步阅读：[完整中文指南](docs/GUIDE.zh-CN.md)、[事件接口说明](docs/EVENTS.md)、[评测规则](docs/BENCHMARKS.md)、[贡献指南](CONTRIBUTING.md) 和 [更新日志](CHANGELOG.md)。项目源码使用 [MIT 许可证](LICENSE)，第三方模型、软件包和视频素材保留各自的许可证。
