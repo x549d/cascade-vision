@@ -59,7 +59,7 @@ cascade-vision benchmark --manifest reports/fixture/manifest.json --output-dir r
 
 This fixture is synthetic; reports explicitly mark that fact. For real clips, copy [the manifest template](../examples/real-video-manifest.json), record footage permission, annotate event intervals and set `footage_type` accurately. Real provider evaluation requires `--allow-api` and a positive shared `--max-api-calls` cap. `--realtime` paces a local constant-frame-rate clip for event-to-verdict latency.
 
-See [benchmark commands and scoring](BENCHMARKS.md), [event schema/integration](EVENTS.md), and [independent pilot guide](PILOT_GUIDE.md). No real-video results or independent adoption are claimed yet.
+See [benchmark commands and scoring](BENCHMARKS.md), [event schema/integration](EVENTS.md), and [independent pilot guide](PILOT_GUIDE.md). Real-video accuracy and cost trade-offs require evaluation on authorized annotated footage.
 
 ## Development
 
@@ -70,7 +70,7 @@ python -m ruff format --check cascade_vision tests examples
 python -m build
 ```
 
-See [evaluation methodology](BENCHMARKS.md), [contributing](../CONTRIBUTING.md), and [changelog](../CHANGELOG.md). There is no published real-video benchmark or claimed adoption count. Contributions with licensed footage, event annotations and raw measurements are welcome.
+See [evaluation methodology](BENCHMARKS.md), [contributing](../CONTRIBUTING.md), and [changelog](../CHANGELOG.md). Real-video benchmark results have not been published. Contributions with licensed footage, event annotations and raw measurements are welcome.
 
 ## License
 

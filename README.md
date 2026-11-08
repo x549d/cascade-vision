@@ -18,7 +18,7 @@ Use it to build a video-analysis prototype that turns selected images into objec
 
 The tool handles local motion filtering, object detection and tracking, background model requests, bounded failure recovery and event export. You can also compare fixed-interval sampling, motion filtering and the full cascade using annotated footage.
 
-The main outputs are **a run summary** and **a stream of individual task results**. The default interface is a terminal and files; integrations can use the Python API.
+The main outputs are **a run summary** and **a stream of individual task results**. Together, they help you turn selected video observations into review lists, filterable records and data for your own systems. The default interface is a terminal and files; integrations can use the Python API.
 
 ## How to use it
 
@@ -67,10 +67,11 @@ This compares the default policies on one generated, annotated clip. To evaluate
 
 The demo prints a summary in the terminal and writes two files:
 
-| File | What to look for |
-| --- | --- |
-| `reports/demo.json` | Run mode, processed frames, successful/failed tasks, observed tokens and timing |
-| `reports/events.jsonl` | One JSON object per task, containing its status, object metadata, description and any known usage |
+| File | What it contains | What you can use it for |
+| --- | --- | --- |
+| `reports/demo.json` | Run mode, processed frames, task counts, observed tokens and timing | Check whether the run completed reliably and tune sampling, queue size or concurrency |
+| `reports/events.jsonl` | Per-task status, time information, object metadata, descriptions and known usage | Build a review list, filter by event label, and feed records into your own storage or interface |
+| `reports/comparison/benchmark.json` | Scores and operating metrics for each sampling policy, when a benchmark is run | Compare recall, false alarms, latency and usage on the same annotated footage |
 
 For example, a completed **mock** record can contain the following fields. This is an abbreviated output example:
 
@@ -91,6 +92,36 @@ For example, a completed **mock** record can contain the following fields. This 
 ```
 
 Read `refined_category` for the description's object category, `activity_summary` for the activity text, and `observed_events` for labels from your configured vocabulary. `simulated: true` identifies a predefined mock result. A failed or refused request does not become a successful mock result. `applied: false` means a completed response was too old or belonged to a previous stream epoch and was not used to update the cache.
+
+### What the results are useful for
+
+- **Review relevant moments:** use `media_timestamp_s` and `frame_idx` to locate an emitted observation in the original local video, then inspect its description and bounding box. This gives you a list of moments to review rather than a complete transcript of every frame.
+- **Filter and organize observations:** use `observed_events`, `refined_category` and `activity_summary` to prepare label-based review lists or category counts. Repeated observations of one track are not automatically counts of unique people or separate real-world events.
+- **Connect your own workflow:** parse the JSONL records or consume the Python callback, then send the selected data to your own database, dashboard or notification logic. Keep session, stream epoch and track ID together when grouping records.
+- **Choose an operating policy:** compare labelled-video scores and measured usage to decide which sampling interval, retry limit and concurrency settings suit your footage. Inspect loss and failures alongside any apparent reduction in calls.
+
+For example, this local script prints a review list of completed person observations from the event file generated above:
+
+```python
+import json
+from pathlib import Path
+
+with Path("reports/events.jsonl").open(encoding="utf-8") as source:
+    for line in source:
+        event = json.loads(line)
+        if event.get("status") != "completed" or not event.get("applied", True):
+            continue
+        verdict = event.get("verdict", {})
+        if verdict.get("is_valid_target") and "person" in verdict.get("observed_events", []):
+            print({
+                "time_s": event.get("media_timestamp_s"),
+                "frame": event.get("frame_idx"),
+                "description": verdict.get("activity_summary"),
+                "simulated": event.get("simulated", False),
+            })
+```
+
+The `simulated` field is retained so demo records remain visibly distinct from model observations. API usage and cost conclusions should use real responses; mock records are useful for checking the integration format.
 
 In the summary, inspect `failed_tasks`, `dropped_tasks`, `expired_tasks` and `budget_rejected_tasks` before interpreting throughput or filtering. `actual_tokens` uses returned API usage; it is zero for mock calls and can be `null` when complete usage is unknown. Cost estimates require configured prices and are not billing receipts.
 
