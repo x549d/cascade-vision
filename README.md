@@ -1,4 +1,4 @@
-# cascade-vision — Detect Objects in Video and Describe Their Activity / 检测视频目标并描述其活动
+# cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
 [Chinese version](README.zh-CN.md) · [Download a release](https://github.com/x549d/cascade-vision/releases) · [Technical reference](docs/REFERENCE.md)
@@ -8,15 +8,23 @@
 
 ## Introduction
 
-`cascade-vision` is a Python library and command-line tool that detects objects in video, selects objects for further analysis, and uses a vision-language model to describe their category and activity. It exports structured records that another program can read.
+`cascade-vision` is a local filtering layer between your video and a vision-language model, designed to reduce repeated AI API requests. It checks motion, detects and tracks objects, then sends selected cropped images to the model for further analysis. This lets you build a video-analysis workflow that submits selected observations instead of every frame.
 
-You can start with a self-contained offline demo, then connect a video file, webcam or RTSP stream. The project is early alpha: real-world accuracy and cost savings remain to be validated.
+The workflow is: **video → local motion filtering → object detection and tracking → rule-based selection → cropped images → AI analysis → structured records**.
+
+It is a Python library and command-line tool for local video files, webcams and RTSP streams, with a self-contained offline demo. The project is early alpha: real-world semantic accuracy and net API cost savings still require validation.
 
 ## What this project does
 
-Use it to build a video-analysis prototype that turns selected images into object categories, activity summaries and event labels. For example, you can inspect selected people or bags in a clip, save the resulting descriptions, and compare how different frame-selection policies affect event recall and API usage.
+Use it when you want AI to inspect selected video content while limiting repetitive image submissions:
 
-The tool handles local motion filtering, object detection and tracking, background model requests, bounded failure recovery and event export. You can also compare fixed-interval sampling, motion filtering and the full cascade using annotated footage.
+- **Reduce repeated requests:** skip some static frames and use tracking, cooldowns and cached results to avoid repeatedly inspecting the same target. For example, a person appearing in hundreds of frames does not need a new model request on every frame; refresh and retry rules can still trigger later requests.
+- **Send selected regions:** crop around a target and send that image to the model, rather than the entire frame. Whether a crop uses fewer image tokens depends on the model, image dimensions and detail settings.
+- **Build an AI workflow:** export timestamped object categories, activity descriptions and event labels. Your own scripts or AI tools can use these records to prepare review lists, summarize selected observations, or feed a database or dashboard.
+
+Here, “selected” means chosen by configurable object classes, confidence thresholds and trigger rules, such as a newly observed priority target, a low-confidence detection or overlapping targets. The system does not identify every meaningful moment, and filtering can miss content. It sends cropped still images to the model; it does not upload the complete video or automatically generate highlight clips.
+
+The tool also handles background model requests, bounded failure recovery and event export. You can compare fixed-interval sampling, motion filtering and the full cascade on annotated footage to assess the tradeoff between event recall and API usage. Usage here means the connected model API's requests and returned tokens. Savings depend on the footage and configuration; fewer requests or smaller crops alone do not establish lower total cost.
 
 The main outputs are **a run summary** and **a stream of individual task results**. Together, they help you turn selected video observations into review lists, filterable records and data for your own systems. The default interface is a terminal and files; integrations can use the Python API.
 
