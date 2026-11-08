@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cascade-vision"
+dynamic = ["version"]
+description = "Cascaded motion detection, YOLO tracking and asynchronous VLM video inspection."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "cascade-vision contributors" }]
+keywords = [
+    "computer-vision", "video-analytics", "opencv", "yolo", "bytetrack",
+    "vlm", "openai", "gpt-4o", "multimodal", "cost-optimization", "surveillance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "numpy>=1.23",
+    "opencv-python-headless>=4.8",
+    "openai>=1.42",
+    "pydantic>=2.5",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+yolo = ["ultralytics>=8.1", "lap>=0.5.12"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4", "build>=1.0", "twine>=5.0"]
+all = ["cascade-vision[yolo,dev]"]
+
+[project.scripts]
+cascade-vision = "cascade_vision.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/x549d/cascade-vision"
+Repository = "https://github.com/x549d/cascade-vision"
+Issues = "https://github.com/x549d/cascade-vision/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "cascade_vision.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["cascade_vision*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["UP006", "UP007", "UP035", "UP045"]
