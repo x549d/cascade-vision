@@ -30,25 +30,29 @@ The main outputs are **a run summary** and **a stream of individual task results
 
 ## How to use it
 
+![Synthetic video demo with mock event output](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
+
+The animation shows moving targets in the synthetic clip, the mock events it produced, and the final summary for the JSON report and JSONL event log.
+
 ### Try it without a camera, footage or API key
 
-With Python 3.9 or newer, run:
+With Python 3.9 or newer, install from PyPI once the package is published, then run the demo.
 
 ```bash
-git clone https://github.com/x549d/cascade-vision.git
-cd cascade-vision
-python -m pip install -e .
-python -m cascade_vision.cli demo --mock-vlm --event-labels person,backpack --report-json reports/demo.json --events-jsonl reports/events.jsonl
+python -m pip install cascade-vision
+cascade-vision demo --mock-vlm --event-labels person,backpack --report-json reports/demo.json --events-jsonl reports/events.jsonl
 ```
 
 The demo generates synthetic frames and uses a simple contour detector plus predefined mock descriptions. After dependency installation it sends no API requests and does not download detector weights. Mock descriptions demonstrate the output format, not recognition accuracy.
+
+To install from source, clone this repository and run `python -m pip install -e .` from its root.
 
 ### Process your own video
 
 Install the real detector, replace the path with a video you are authorized to process, and keep semantic analysis simulated while checking the pipeline:
 
 ```bash
-python -m pip install -e ".[yolo]"
+python -m pip install "cascade-vision[yolo]"
 python -m cascade_vision.cli run --source local/video.mp4 --mock-vlm --headless --max-frames 300 --event-labels person,backpack --report-json reports/local.json --events-jsonl reports/local-events.jsonl
 ```
 

@@ -23,7 +23,10 @@ jobs:
           python - <<'PY'
           import os
           from cascade_vision import __version__
-          assert os.environ['GITHUB_REF_NAME'] == f'v{__version__}'
+          from packaging.version import Version
+
+          tag = os.environ['GITHUB_REF_NAME']
+          assert tag.startswith('v') and Version(tag) == Version(__version__)
           PY
       - run: python -m pytest -q
       - run: python -m build
@@ -32,4 +35,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz --verify-tag --title "cascade-vision $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md"
+          flags=()
+          if python -c 'from cascade_vision import __version__; from packaging.version import Version; raise SystemExit(not Version(__version__).is_prerelease)'; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz --verify-tag --title "cascade-vision $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md" "${flags[@]}"

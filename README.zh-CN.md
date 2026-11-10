@@ -27,25 +27,29 @@
 
 ## 怎么用
 
+![合成视频演示与模拟事件输出](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
+
+动图展示合成目标经过画面筛选后产生模拟事件，以及 JSON 和 JSONL 输出的运行摘要。
+
 ### 没有摄像头、视频和密钥，先运行离线演示
 
-使用 Python 3.9 或更高版本，在终端执行：
+使用 Python 3.9 或更高版本。软件包在 PyPI 发布后，即可安装并运行离线演示。
 
 ```bash
-git clone https://github.com/x549d/cascade-vision.git
-cd cascade-vision
-python -m pip install -e .
-python -m cascade_vision.cli demo --mock-vlm --event-labels person,backpack --report-json reports/demo.json --events-jsonl reports/events.jsonl
+python -m pip install cascade-vision
+cascade-vision demo --mock-vlm --event-labels person,backpack --report-json reports/demo.json --events-jsonl reports/events.jsonl
 ```
 
 演示会生成合成画面，使用简单轮廓检测和预设的模拟描述。依赖安装完成后，不发送 API 请求，也不下载检测模型权重。模拟描述用于展示输出格式，不能证明识别准确率。
+
+源码安装也可用。克隆仓库后，在仓库根目录执行 `python -m pip install -e .`。
 
 ### 分析自己的视频
 
 先安装真实检测器，将路径换成有权处理的视频，并使用模拟语义模式检查流程：
 
 ```bash
-python -m pip install -e ".[yolo]"
+python -m pip install "cascade-vision[yolo]"
 python -m cascade_vision.cli run --source local/video.mp4 --mock-vlm --headless --max-frames 300 --event-labels person,backpack --report-json reports/local.json --events-jsonl reports/local-events.jsonl
 ```
 
