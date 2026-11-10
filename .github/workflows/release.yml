@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: ['release/v0.1.0-alpha']
 
 permissions:
   contents: read
@@ -18,6 +19,8 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install -e ".[dev]"
+      - name: Select release tag
+        run: echo "RELEASE_TAG=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
       - name: Verify tag matches package version
         run: |
           python - <<'PY'
@@ -25,7 +28,7 @@ jobs:
           from cascade_vision import __version__
           from packaging.version import Version
 
-          tag = os.environ['GITHUB_REF_NAME']
+          tag = os.environ['RELEASE_TAG']
           assert tag.startswith('v') and Version(tag) == Version(__version__)
           PY
       - run: python -m pytest -q
@@ -39,4 +42,10 @@ jobs:
           if python -c 'from cascade_vision import __version__; from packaging.version import Version; raise SystemExit(not Version(__version__).is_prerelease)'; then
             flags+=(--prerelease --latest=false)
           fi
-          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz --verify-tag --title "cascade-vision $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md" "${flags[@]}"
+          if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
+            [[ "$GITHUB_REF_NAME" == "release/v0.1.0-alpha" ]]
+            flags+=(--target "$GITHUB_SHA")
+          else
+            flags+=(--verify-tag)
+          fi
+          gh release create "$RELEASE_TAG" dist/*.whl dist/*.tar.gz --title "cascade-vision $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" "${flags[@]}"

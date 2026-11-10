@@ -1,6 +1,6 @@
 """Cascaded video inspection with explicit simulation and usage telemetry."""
 
-__version__ = "0.3.0"
+__version__ = "0.1.0a0"
 
 from .config import CascadeConfig
 from .detector import (
