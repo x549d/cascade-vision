@@ -36,7 +36,7 @@ The animation shows moving targets in the synthetic clip, the mock events it pro
 
 ### Try it without a camera, footage or API key
 
-With Python 3.9 or newer, install from PyPI once the package is published, then run the demo.
+With Python 3.9 or newer, install from [PyPI](https://pypi.org/project/cascade-vision/) and run the offline demo.
 
 ```bash
 python -m pip install cascade-vision

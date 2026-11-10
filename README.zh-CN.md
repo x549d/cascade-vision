@@ -33,7 +33,7 @@
 
 ### 没有摄像头、视频和密钥，先运行离线演示
 
-使用 Python 3.9 或更高版本。软件包在 PyPI 发布后，即可安装并运行离线演示。
+使用 Python 3.9 或更高版本，从 [PyPI](https://pypi.org/project/cascade-vision/) 安装并运行离线演示。
 
 ```bash
 python -m pip install cascade-vision
