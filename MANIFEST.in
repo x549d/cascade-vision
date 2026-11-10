@@ -1,3 +1,4 @@
 include README.md README.zh-CN.md CONTRIBUTING.md CHANGELOG.md LICENSE
 recursive-include docs *.md
+include docs/media/offline-demo.gif
 recursive-include examples *.py *.json
