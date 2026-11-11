@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6fa">
+  <title>Cascade Vision · 视频分析工作台</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell top-inner">
+      <a href="/" class="brand"><span class="brand-icon"><svg aria-hidden="true"><use href="/icons.svg#layers"/></svg></span>
+        <span>Cascade Vision<small>视频分析工作台</small></span>
+      </a>
+      <span class="local"><i></i> 本机工作区</span>
+    </div>
+  </header>
+  <main class="shell">
+    <div class="intro">
+      <p class="eyebrow"><span></span> VIDEO REVIEW</p>
+      <h1>视频分析工作台</h1>
+      <p>在本地筛选视频，集中查看目标、时间点和模型用量。</p>
+    </div>
+    <section class="card import" aria-labelledby="import-title">
+      <div class="section-heading">
+        <span class="step">01</span>
+        <div><h2 id="import-title">导入视频</h2><p>选择本机视频，或先体验离线演示。</p></div>
+        <button class="secondary demo" id="demo"><svg aria-hidden="true"><use href="/icons.svg#play"/></svg>运行离线演示</button>
+      </div>
+      <div class="import-controls">
+        <button type="button" id="drop" class="drop">
+          <span class="drop-icon"><svg aria-hidden="true"><use href="/icons.svg#upload"/></svg></span>
+          <span class="drop-text"><strong id="filename">点击选择或拖入视频</strong><small id="file-info">MP4、MOV、AVI、WebM、MKV · 最大 256 MiB</small></span>
+        </button>
+        <input type="file" accept=".mp4,.m4v,.mov,.avi,.webm,.mkv" id="file" hidden>
+        <div class="fields">
+          <label for="detector" id="detector-field" hidden>检测模型
+            <select id="detector"><option value="general">通用检测</option><option value="person">站台人员（实验）</option></select>
+          </label>
+          <label for="mode">分析方式
+            <select id="mode"><option value="local">本地检测 · 描述模拟</option><option value="api" hidden disabled>真实 AI 分析</option></select>
+          </label>
+          <label for="limit">处理范围
+            <select id="limit"><option value="3600" selected>整段（最多 3,600 帧）</option><option value="300">前 300 帧</option><option value="600">前 600 帧</option><option value="1800">前 1,800 帧</option></select>
+          </label>
+          <button class="primary" id="run" disabled><svg aria-hidden="true"><use href="/icons.svg#spark"/></svg>开始分析</button>
+        </div>
+      </div>
+      <div id="api-options" class="api-options" hidden>
+        <label>请求上限 <input type="number" id="cap" min="1" max="50" value="10" required></label>
+        <label class="check"><input type="checkbox" id="consent"> 我同意将选中的裁剪图发送给模型服务，并知悉可能产生费用。</label>
+      </div>
+      <div id="progress-box" class="progress-box" hidden>
+        <div><span id="progress-text" role="status"></span><span id="progress-count"></span></div>
+        <progress id="progress" max="100"></progress>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+    </section>
+    <section class="results" aria-labelledby="result-title">
+      <div class="section-heading result-heading">
+        <span class="step">02</span>
+        <div><h2 id="result-title">分析结果</h2><p id="result-source">导入视频后，结果将在这里显示。</p></div>
+        <div class="exports" id="exports" hidden>
+          <a class="secondary" id="summary"><svg aria-hidden="true"><use href="/icons.svg#download"/></svg>汇总 JSON</a>
+          <a class="secondary" id="export"><svg aria-hidden="true"><use href="/icons.svg#download"/></svg>事件 JSONL</a>
+        </div>
+      </div>
+      <div class="stats" id="stats">
+        <div class="card stat"><div><svg aria-hidden="true"><use href="/icons.svg#film"/></svg>处理帧数</div><strong id="stat-frames">—</strong><small id="stat-duration">视频解码与分析</small></div>
+        <div class="card stat"><div><svg aria-hidden="true"><use href="/icons.svg#filter"/></svg>运动筛选未通过</div><strong id="stat-skipped">—</strong><small id="stat-skip-note">其中部分帧会定期复查</small></div>
+        <div class="card stat"><div><svg aria-hidden="true"><use href="/icons.svg#target"/></svg>已完成任务</div><strong id="stat-completed">—</strong><small id="stat-task-note">等待生成事件记录</small></div>
+        <div class="card stat"><div><svg aria-hidden="true"><use href="/icons.svg#spark"/></svg>真实 API 请求</div><strong id="stat-calls">—</strong><small id="stat-tokens">显示已观测模型用量</small></div>
+      </div>
+      <p class="notice" id="quality" hidden></p>
+      <div class="workspace">
+        <section class="card preview" aria-labelledby="preview-title">
+          <div class="panel-heading">
+            <div><h2 id="preview-title">画面复核</h2><p id="preview-subtitle">从右侧选择事件，查看对应画面。</p></div>
+            <div class="tabs" aria-label="画面类型">
+              <button id="image-tab" aria-pressed="true">事件截图</button>
+              <button id="video-tab" aria-pressed="false" disabled>原视频</button>
+            </div>
+          </div>
+          <div class="screen">
+            <div id="placeholder" class="placeholder">
+              <div class="screen-icon"><svg aria-hidden="true"><use href="/icons.svg#film"/></svg></div>
+              <strong>等待视频画面</strong><small>运行离线演示，快速查看结果示例。</small>
+            </div>
+            <img id="frame" alt="选中记录的画面与目标框" hidden>
+            <video id="video" controls preload="metadata" playsinline hidden></video>
+          </div>
+          <p class="video-note" id="video-note" hidden>浏览器无法播放此编码，可切回事件截图复核。</p>
+          <div class="timeline">
+            <div class="time-heading"><span>事件时间线</span><span id="time-end">—</span></div>
+            <div class="rail" id="rail" aria-hidden="true"></div>
+            <div class="time-labels"><span>00:00</span><span>点击事件定位画面</span></div>
+          </div>
+          <div id="detail" class="detail" hidden>
+            <div><span class="pill" id="detail-category"></span><span class="detail-meta" id="detail-meta"></span></div>
+            <p id="description"></p>
+          </div>
+        </section>
+        <section class="card event-panel" aria-labelledby="events-title">
+          <div class="panel-heading">
+            <div><h2 id="events-title">事件记录 <span class="count" id="event-count">0</span></h2><p>按时间排序，点击查看画面。</p></div>
+            <select id="category" aria-label="按目标类别筛选" disabled><option value="">全部类别</option></select>
+          </div>
+          <div class="event-labels"><span>时间 / 目标</span><span>处理状态</span></div>
+          <div id="event-list" class="event-list">
+            <p class="empty-events">分析完成后，选中的目标会显示在这里。</p>
+          </div>
+          <div class="panel-foot" id="panel-foot">同一目标可能产生多条记录。</div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <footer class="shell footer"><span>Cascade Vision</span><span>本地视频筛选 · 按需提交 AI</span></footer>
+</body>
+</html>

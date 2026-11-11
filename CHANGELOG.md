@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a local browser workspace for importing video, reviewing detection boxes by timestamp, and exporting JSON and JSONL results.
+- Add an offline browser demo, optional person-focused local weights, and Chinese and English tutorials.
+
 ## 0.3.0
 
 - Add bounded, fresh-frame retries with backoff, non-retryable failures and pending-request suppression.

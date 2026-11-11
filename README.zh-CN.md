@@ -1,7 +1,7 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[英文版](README.md) · [版本下载](https://github.com/x549d/cascade-vision/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
+[英文版](README.md) · [可视化工作台教程](docs/WEB.md) · [版本下载](https://github.com/x549d/cascade-vision/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
 
 ## 简介
 
@@ -23,15 +23,28 @@
 
 程序还负责后台模型请求、有限的失败恢复和事件导出。你可以用带事件标注的视频，对比固定间隔抽帧、运动筛选和完整级联，评估事件召回率与 API 用量之间的取舍。这里的用量指所接入模型服务的 API 请求和响应返回的 token。节省效果取决于素材和配置，不能仅凭请求次数或裁剪尺寸减少，就认定总成本下降。
 
-最终主要得到两类输出： **本次运行的汇总报告**和**逐条任务结果**。你可以将选中画面的观察结果整理成待复核清单、可筛选记录，或作为自己系统的数据输入。默认通过终端和文件使用，也可以通过 Python 接口接入其他系统。
+最终得到**本次运行的汇总报告**和**逐条任务结果**。你可以在浏览器工作台中复核画面，也可以通过命令行或 Python 接口把记录接入自己的系统。
 
 ## 怎么用
+
+### 打开本地可视化界面
+
+克隆仓库后，在仓库根目录执行以下命令。
+
+```bash
+python -m pip install -e ".[yolo]"
+python -m cascade_vision.web
+```
+
+浏览器打开 [http://127.0.0.1:8765](http://127.0.0.1:8765)，导入视频，点击 **开始分析**。同一页可以看处理帧数、运动筛选和 API 用量，按类别筛选事件，点击记录看目标框或跳转到原视频时间点，并下载汇总 JSON 和事件 JSONL。
+
+界面默认使用真实检测和模拟语义描述，付费 API 请求为零。点击 **运行离线演示** 可用合成素材体验，无需安装 YOLO。 [图文教程与 AI 工具接入示例](docs/WEB.md)
+
+### 没有摄像头、视频和密钥，先运行离线演示
 
 ![合成视频演示与模拟事件输出](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
 
 动图展示合成目标经过画面筛选后产生模拟事件，以及 JSON 和 JSONL 输出的运行摘要。
-
-### 没有摄像头、视频和密钥，先运行离线演示
 
 使用 Python 3.9 或更高版本，从 [PyPI](https://pypi.org/project/cascade-vision/) 安装并运行离线演示。
 

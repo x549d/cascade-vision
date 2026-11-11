@@ -1,7 +1,7 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[Chinese version](README.zh-CN.md) · [Download a release](https://github.com/x549d/cascade-vision/releases) · [Technical reference](docs/REFERENCE.md)
+[Chinese version](README.zh-CN.md) · [Video workspace tutorial](docs/WEB.en.md) · [Download a release](https://github.com/x549d/cascade-vision/releases) · [Technical reference](docs/REFERENCE.md)
 
 [![CI](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -26,15 +26,28 @@ Here, “selected” means chosen by configurable object classes, confidence thr
 
 The tool also handles background model requests, bounded failure recovery and event export. You can compare fixed-interval sampling, motion filtering and the full cascade on annotated footage to assess the tradeoff between event recall and API usage. Usage here means the connected model API's requests and returned tokens. Savings depend on the footage and configuration; fewer requests or smaller crops alone do not establish lower total cost.
 
-The main outputs are **a run summary** and **a stream of individual task results**. Together, they help you turn selected video observations into review lists, filterable records and data for your own systems. The default interface is a terminal and files; integrations can use the Python API.
+The main outputs are **a run summary** and **a stream of individual task results**. Use the local browser workspace to review selected observations or the CLI and Python API to integrate the records into your own systems.
 
 ## How to use it
+
+### Open the local review interface
+
+Run these commands from the cloned repository.
+
+```bash
+python -m pip install -e ".[yolo]"
+python -m cascade_vision.web
+```
+
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765) in your browser. Import a video and select **开始分析** (Analyze). The workspace shows frame counts, motion filtering, API usage, and a filterable list of timestamped events. Select an event to inspect its bounding box or jump to that point in the original video. Download the run summary and event records from the same page.
+
+The Chinese interface defaults to real local detection with simulated descriptions and makes no paid API calls. Select **运行离线演示** (Run offline demo) to explore it with synthetic footage. The demo also works without the YOLO extra. [Step-by-step tutorial with screenshots and AI export examples](docs/WEB.en.md)
+
+### Try it without a camera, footage or API key
 
 ![Synthetic video demo with mock event output](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
 
 The animation shows moving targets in the synthetic clip, the mock events it produced, and the final summary for the JSON report and JSONL event log.
-
-### Try it without a camera, footage or API key
 
 With Python 3.9 or newer, install from [PyPI](https://pypi.org/project/cascade-vision/) and run the offline demo.
 

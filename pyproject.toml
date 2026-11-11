@@ -46,6 +46,7 @@ all = ["cascade-vision[yolo,dev]"]
 
 [project.scripts]
 cascade-vision = "cascade_vision.cli:main"
+cascade-vision-ui = "cascade_vision.web:main"
 
 [project.urls]
 Homepage = "https://github.com/x549d/cascade-vision"
@@ -57,6 +58,9 @@ version = { attr = "cascade_vision.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["cascade_vision*"]
+
+[tool.setuptools.package-data]
+"cascade_vision.web_assets" = ["*.html", "*.css", "*.js", "*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

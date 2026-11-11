@@ -207,9 +207,12 @@ class CascadeTracker:
         model: Optional[Any] = None,
         use_fallback_if_unavailable: bool = False,
         clock=None,
+        *,
+        person_only: bool = False,
     ) -> None:
         self.config = config or CascadeConfig()
         self._clock = clock or time.monotonic
+        self.person_only = person_only
         self._state_lock = threading.RLock()
         self._pending_frames: Dict[int, int] = {}
         self._failures: Dict[int, int] = {}
@@ -353,12 +356,20 @@ class CascadeTracker:
         if self._use_fallback or self.model is None:
             return self._fallback_tracker.track(frame)
 
+        options = {}
+        if self.person_only:
+            names = self.model.names
+            items = names.items() if isinstance(names, dict) else enumerate(names)
+            options["classes"] = [index for index, name in items if name == "person"]
+            if not options["classes"]:
+                raise ValueError("Person-only detection requires weights with a person class")
         results = self.model.track(
             frame,
             persist=True,
             conf=self.config.conf_min,
             tracker="bytetrack.yaml",
             verbose=False,
+            **options,
         )
         if not results:
             return []
