@@ -21,7 +21,7 @@ python -m cascade_vision.web
 
 点击 **运行离线演示**。页面会处理内置的 300 帧合成素材。完成后点 **背包 · #2**，截图里可以看到绿色的背包框和蓝色的同帧人员框。这个演示可以只用 `python -m pip install -e .` 安装，无需 YOLO 权重和 API 密钥。
 
-![离线合成演示的目标框、时间线和事件列表](workbench-demo.png)
+![离线合成演示的目标框、时间线和事件列表](workbench-demo.jpg)
 
 ## 3. 导入并复核自己的视频
 

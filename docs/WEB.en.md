@@ -21,7 +21,7 @@ Keep the terminal running while you use the Chinese-language interface in your b
 
 Select **运行离线演示** (Run offline demo). It processes 300 synthetic frames. Select **背包 · #2** (Backpack #2) to inspect the green box around that event's target and the blue box around another detection in the same frame. For the demo alone, you can install with `python -m pip install -e .` and skip the YOLO extra.
 
-![Synthetic demo showing detection boxes, the timeline, and the event list](workbench-demo.png)
+![Synthetic demo showing detection boxes, the timeline, and the event list](workbench-demo.jpg)
 
 ## Import and review a video
 
