@@ -9,7 +9,7 @@ Cascade Vision processes video locally and lists selected detections by timestam
 With Git and Python 3.9 or newer, run the commands below.
 
 ```bash
-git clone https://github.com/x549d/cascade-vision.git
+git clone https://github.com/x549d/video-ai-saver.git cascade-vision
 cd cascade-vision
 python -m pip install -e ".[yolo]"
 python -m cascade_vision.web

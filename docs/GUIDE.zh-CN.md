@@ -2,8 +2,8 @@
 
 适用版本：`0.3.0`。本文面向首次使用项目的开发者，介绍运行方式、数据输出、评测规则和后续验证工作。
 
-- [项目仓库](https://github.com/x549d/cascade-vision)
-- [0.3.0 发布页](https://github.com/x549d/cascade-vision/releases/tag/v0.3.0)
+- [项目仓库](https://github.com/x549d/video-ai-saver)
+- [0.3.0 发布页](https://github.com/x549d/video-ai-saver/releases/tag/v0.3.0)
 - [中文简介](../README.zh-CN.md)
 - [英文接口说明](../README.md)
 
@@ -53,7 +53,7 @@ flowchart LR
 ### Windows PowerShell
 
 ```powershell
-git clone https://github.com/x549d/cascade-vision.git
+git clone https://github.com/x549d/video-ai-saver.git cascade-vision
 cd cascade-vision
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -62,7 +62,7 @@ python -m venv .venv
 ### Linux 或 macOS
 
 ```bash
-git clone https://github.com/x549d/cascade-vision.git
+git clone https://github.com/x549d/video-ai-saver.git cascade-vision
 cd cascade-vision
 python -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"

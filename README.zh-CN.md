@@ -1,7 +1,7 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[英文版](README.md) · [可视化工作台教程](docs/WEB.md) · [版本下载](https://github.com/x549d/cascade-vision/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
+[英文版](README.md) · [可视化工作台教程](docs/WEB.md) · [版本下载](https://github.com/x549d/video-ai-saver/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
 
 ## 简介
 
@@ -42,7 +42,7 @@ python -m cascade_vision.web
 
 ### 没有摄像头、视频和密钥，先运行离线演示
 
-![合成视频演示与模拟事件输出](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
+![合成视频演示与模拟事件输出](https://raw.githubusercontent.com/x549d/video-ai-saver/main/docs/media/offline-demo.gif)
 
 动图展示合成目标经过画面筛选后产生模拟事件，以及 JSON 和 JSONL 输出的运行摘要。
 

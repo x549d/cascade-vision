@@ -1,9 +1,9 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[Chinese version](README.zh-CN.md) · [Video workspace tutorial](docs/WEB.en.md) · [Download a release](https://github.com/x549d/cascade-vision/releases) · [Technical reference](docs/REFERENCE.md)
+[Chinese version](README.zh-CN.md) · [Video workspace tutorial](docs/WEB.en.md) · [Download a release](https://github.com/x549d/video-ai-saver/releases) · [Technical reference](docs/REFERENCE.md)
 
-[![CI](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/x549d/cascade-vision/actions/workflows/ci.yml)
+[![CI](https://github.com/x549d/video-ai-saver/actions/workflows/ci.yml/badge.svg)](https://github.com/x549d/video-ai-saver/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Introduction
@@ -45,7 +45,7 @@ The Chinese interface defaults to real local detection with simulated descriptio
 
 ### Try it without a camera, footage or API key
 
-![Synthetic video demo with mock event output](https://raw.githubusercontent.com/x549d/cascade-vision/main/docs/media/offline-demo.gif)
+![Synthetic video demo with mock event output](https://raw.githubusercontent.com/x549d/video-ai-saver/main/docs/media/offline-demo.gif)
 
 The animation shows moving targets in the synthetic clip, the mock events it produced, and the final summary for the JSON report and JSONL event log.
 

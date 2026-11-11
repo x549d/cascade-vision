@@ -49,9 +49,9 @@ cascade-vision = "cascade_vision.cli:main"
 cascade-vision-ui = "cascade_vision.web:main"
 
 [project.urls]
-Homepage = "https://github.com/x549d/cascade-vision"
-Repository = "https://github.com/x549d/cascade-vision"
-Issues = "https://github.com/x549d/cascade-vision/issues"
+Homepage = "https://github.com/x549d/video-ai-saver"
+Repository = "https://github.com/x549d/video-ai-saver"
+Issues = "https://github.com/x549d/video-ai-saver/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "cascade_vision.__version__" }

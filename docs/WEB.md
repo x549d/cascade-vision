@@ -9,7 +9,7 @@
 先安装 Git 和 Python 3.9 或更高版本。在终端运行以下命令。已有项目目录时，在该目录运行后两条命令即可。
 
 ```bash
-git clone https://github.com/x549d/cascade-vision.git
+git clone https://github.com/x549d/video-ai-saver.git cascade-vision
 cd cascade-vision
 python -m pip install -e ".[yolo]"
 python -m cascade_vision.web
