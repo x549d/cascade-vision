@@ -1,7 +1,7 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[Chinese version](README.zh-CN.md) · [Video workspace tutorial](docs/WEB.en.md) · [Download a release](https://github.com/x549d/video-ai-saver/releases) · [Technical reference](docs/REFERENCE.md)
+[Chinese version](README.zh-CN.md) · [Codex plugin](docs/CODEX.en.md) · [Video workspace tutorial](docs/WEB.en.md) · [Download a release](https://github.com/x549d/video-ai-saver/releases) · [Technical reference](docs/REFERENCE.md)
 
 [![CI](https://github.com/x549d/video-ai-saver/actions/workflows/ci.yml/badge.svg)](https://github.com/x549d/video-ai-saver/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -29,6 +29,10 @@ The tool also handles background model requests, bounded failure recovery and ev
 The main outputs are **a run summary** and **a stream of individual task results**. Use the local browser workspace to review selected observations or the CLI and Python API to integrate the records into your own systems.
 
 ## How to use it
+
+### Skim a video before asking Codex to inspect it
+
+The **Video AI Saver** plugin scans a local file for visual changes and gives Codex a timestamped contact sheet and a small set of JPEG frames. Use it to locate changes in a screen recording or find moments to review without passing the full video to the model. The local screening step needs no API key. [Install the plugin and try the example](docs/CODEX.en.md).
 
 ### Open the local review interface
 

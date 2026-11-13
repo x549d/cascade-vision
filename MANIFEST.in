@@ -2,4 +2,9 @@ include README.md README.zh-CN.md CONTRIBUTING.md CHANGELOG.md LICENSE
 recursive-include docs *.md
 include docs/media/offline-demo.gif
 include docs/workbench-demo.jpg
+include docs/media/codex-triage-demo.jpg
 recursive-include examples *.py *.json
+include codex-plugin/.agents/plugins/marketplace.json
+include codex-plugin/plugins/video-ai-saver/.codex-plugin/plugin.json
+include codex-plugin/plugins/video-ai-saver/LICENSE
+recursive-include codex-plugin/plugins/video-ai-saver/skills *.md *.py

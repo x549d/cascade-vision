@@ -1,0 +1,22 @@
+{
+  "name": "video-ai-saver",
+  "version": "0.1.0",
+  "description": "Locally skim videos and extract timestamped frames for Codex to inspect.",
+  "author": { "name": "Cascade Vision contributors" },
+  "homepage": "https://github.com/x549d/video-ai-saver",
+  "repository": "https://github.com/x549d/video-ai-saver",
+  "license": "MIT",
+  "keywords": ["video", "keyframes", "opencv"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Video AI Saver",
+    "shortDescription": "Find frames worth reviewing before AI analysis",
+    "longDescription": "Scan a local video for visual changes and get timestamped previews, a contact sheet, and individual JPEG frames.",
+    "developerName": "Cascade Vision contributors",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/x549d/video-ai-saver",
+    "defaultPrompt": ["Skim my local video and show me up to 12 frames worth reviewing."],
+    "brandColor": "#176C5B"
+  }
+}

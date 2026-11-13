@@ -1,0 +1,12 @@
+{
+  "name": "cascade-vision",
+  "interface": { "displayName": "Cascade Vision" },
+  "plugins": [
+    {
+      "name": "video-ai-saver",
+      "source": { "source": "local", "path": "./plugins/video-ai-saver" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

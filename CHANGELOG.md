@@ -4,6 +4,7 @@
 
 - Add a local browser workspace for importing video, reviewing detection boxes by timestamp, and exporting JSON and JSONL results.
 - Add an offline browser demo, optional person-focused local weights, and Chinese and English tutorials.
+- Add the Video AI Saver Codex plugin for local visual-change screening, with timestamped JPEGs, a contact sheet, and bilingual installation guides.
 
 ## 0.3.0
 

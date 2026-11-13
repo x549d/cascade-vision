@@ -1,7 +1,7 @@
 # cascade-vision — Filter Video Before AI to Reduce Repeated API Requests / 视频先筛选再交给 AI，减少重复 API 请求
 
 
-[英文版](README.md) · [可视化工作台教程](docs/WEB.md) · [版本下载](https://github.com/x549d/video-ai-saver/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
+[英文版](README.md) · [Codex 插件](docs/CODEX.md) · [可视化工作台教程](docs/WEB.md) · [版本下载](https://github.com/x549d/video-ai-saver/releases) · [完整中文指南](docs/GUIDE.zh-CN.md)
 
 ## 简介
 
@@ -26,6 +26,10 @@
 最终得到**本次运行的汇总报告**和**逐条任务结果**。你可以在浏览器工作台中复核画面，也可以通过命令行或 Python 接口把记录接入自己的系统。
 
 ## 怎么用
+
+### 在 Codex 分析视频之前先粗筛
+
+**Video AI Saver** 插件在本地寻找画面变化，输出带时间戳的缩略图总览和少量独立 JPEG。你可以让 Codex 先看这些帧，从录屏里找到界面切换或值得回看的时刻。粗筛不需要 API 密钥，也不用把原视频交给模型。[安装与使用示例](docs/CODEX.md)。
 
 ### 打开本地可视化界面
 
